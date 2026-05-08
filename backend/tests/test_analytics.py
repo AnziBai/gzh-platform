@@ -259,6 +259,97 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(stat.comment_count, 1)
         db.close()
 
+    def test_fetch_stats_updates_articles_with_duplicate_file_paths(self):
+        db = self.Session()
+        first = Article(
+            title="First Duplicate Path",
+            slug="first-duplicate-path",
+            file_path="/tmp/shared.md",
+            status="draft",
+        )
+        second = Article(
+            title="Second Duplicate Path",
+            slug="second-duplicate-path",
+            file_path="/tmp/shared.md",
+            status="draft",
+        )
+        db.add_all([first, second])
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch(
+                "services.wechat_service.get_published_articles",
+                return_value={
+                    "First Duplicate Path": {"update_time": None},
+                    "Second Duplicate Path": {"update_time": None},
+                },
+            ),
+            patch(
+                "services.wechat_service.fetch_real_stats",
+                return_value={
+                    "First Duplicate Path": {
+                        "int_page_read_count": 11,
+                        "share_count": 1,
+                        "add_to_fav_count": 0,
+                        "ori_page_read_count": 0,
+                    },
+                    "Second Duplicate Path": {
+                        "int_page_read_count": 22,
+                        "share_count": 2,
+                        "add_to_fav_count": 0,
+                        "ori_page_read_count": 0,
+                    },
+                },
+            ),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+        db = self.Session()
+        stats = {
+            article.title: article.stats[0].read_count
+            for article in db.query(Article).all()
+        }
+        self.assertEqual(stats["First Duplicate Path"], 11)
+        self.assertEqual(stats["Second Duplicate Path"], 22)
+        db.close()
+
+    def test_fetch_stats_does_not_demote_unmatched_published_articles(self):
+        db = self.Session()
+        article = Article(
+            title="Published But Unmatched",
+            slug="published-but-unmatched",
+            file_path="/tmp/published-but-unmatched.md",
+            status="published",
+        )
+        db.add(article)
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch(
+                "services.wechat_service.get_published_articles",
+                return_value={"Other Published": {"update_time": None}},
+            ),
+            patch("services.wechat_service.fetch_real_stats", return_value={}),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+        db = self.Session()
+        status = db.query(Article).filter(Article.slug == "published-but-unmatched").one().status
+        self.assertEqual(status, "published")
+        db.close()
+
     def test_fetch_stats_requires_wechat_credentials(self):
         with (
             patch("config.Config.WECHAT_APP_ID", ""),

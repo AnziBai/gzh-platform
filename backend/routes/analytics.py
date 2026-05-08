@@ -222,7 +222,8 @@ def fetch_stats():
     try:
         # ── 步骤 1：Upsert 本地文章到数据库 ──
         fs_articles = scan_articles_dir(Config.ARTICLES_DIR)
-        db_by_path = {a.file_path: a for a in db.query(Article).all()}
+        db_articles = db.query(Article).all()
+        db_by_path = {a.file_path: a for a in db_articles if a.file_path}
 
         for fs_item in fs_articles:
             file_path = fs_item["file_path"]
@@ -244,6 +245,7 @@ def fetch_stats():
                 )
                 db.add(art)
                 db_by_path[file_path] = art
+                db_articles.append(art)
             else:
                 # 已有记录：补充 structure_type（如果为空）
                 db_rec = db_by_path[file_path]
@@ -263,7 +265,7 @@ def fetch_stats():
         synced = 0
         if published_on_wechat:
             published_lookup = _title_lookup(published_on_wechat)
-            for article in db_by_path.values():
+            for article in db_articles:
                 if article.id is None:
                     continue
                 title_key = (article.title or "").strip()
@@ -273,8 +275,6 @@ def fetch_stats():
                     if wx_info.get("update_time"):
                         article.publish_timestamp = wx_info["update_time"]
                     synced += 1
-                else:
-                    article.status = "draft"
                 # 未匹配的保持 draft 状态
 
         # ── 步骤 3：从微信 datacube 拉取阅读数据 ──
@@ -291,7 +291,7 @@ def fetch_stats():
         # 对于已有数据的文章，只在 API 数据更大时才更新（防止降级）。
         stats_updated = 0
         wechat_stats_lookup = _title_lookup(wechat_data)
-        for article in db_by_path.values():
+        for article in db_articles:
             if article.id is None:
                 continue
             title_key = (article.title or "").strip()
