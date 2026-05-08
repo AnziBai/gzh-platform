@@ -56,7 +56,7 @@ def overview():
         )
         draft_articles = total_articles - published_articles
 
-        articles = db.query(Article).all()
+        articles = db.query(Article).filter(Article.status == "published").all()
         latest_stats = [_latest_stat(article) for article in articles]
         latest_stats = [stat for stat in latest_stats if stat is not None]
         total_reads = sum(stat.read_count or 0 for stat in latest_stats)
@@ -67,13 +67,9 @@ def overview():
         )
 
         # top structure types: group by structure_type, get avg reads from latest stat per article
-        articles_with_stats = [article for article in articles if article.structure_type]
-
         structure_data = {}
-        for article in articles_with_stats:
-            stype = article.structure_type
-            if not stype:
-                continue
+        for article in articles:
+            stype = article.structure_type or "未分类"
             latest_stat = _latest_stat(article)
             reads = latest_stat.read_count if latest_stat else 0
             if stype not in structure_data:
@@ -113,6 +109,9 @@ def list_articles_analytics():
     db = SessionLocal()
     try:
         # Build DB lookup by file_path
+        status_filter = request.args.get("status", "published")
+        include_all = status_filter == "all"
+
         db_articles = db.query(Article).all()
         db_by_path = {a.file_path: a for a in db_articles}
 
@@ -129,7 +128,11 @@ def list_articles_analytics():
             latest_stat = None
             if db_record:
                 seen_db_ids.add(db_record.id)
+                if not include_all and db_record.status != "published":
+                    continue
                 latest_stat = _latest_stat(db_record)
+            elif not include_all:
+                continue
 
             result.append({
                 "id": db_record.id if db_record else None,
@@ -150,6 +153,8 @@ def list_articles_analytics():
         # Include DB-only articles (not in filesystem)
         for db_art in db_articles:
             if db_art.id in seen_db_ids:
+                continue
+            if not include_all and db_art.status != "published":
                 continue
             latest_stat = _latest_stat(db_art)
             result.append({
@@ -380,6 +385,11 @@ def insights():
         for fs_item in fs_articles:
             fp = fs_item["file_path"]
             db_rec = db_by_path.get(fp)
+            if not db_rec:
+                continue
+            if db_rec.status != "published":
+                seen_db_ids.add(db_rec.id)
+                continue
             fm = fs_item.get("frontmatter", {})
             a = _Art()
             a.structure_type = fm.get("structure_type") or (db_rec.structure_type if db_rec else None)
@@ -391,6 +401,8 @@ def insights():
 
         for db_rec in db_articles:
             if db_rec.id in seen_db_ids:
+                continue
+            if db_rec.status != "published":
                 continue
             a = _Art()
             a.structure_type = db_rec.structure_type

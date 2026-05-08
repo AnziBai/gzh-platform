@@ -72,6 +72,84 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(data["total_shares"], 12)
         self.assertEqual(data["avg_read_per_article"], 150.0)
 
+    def test_overview_totals_ignore_draft_stats(self):
+        db = self.Session()
+        published = Article(
+            title="Published Article",
+            slug="published-article",
+            file_path="/tmp/published.md",
+            status="published",
+            structure_type="case-study",
+        )
+        draft = Article(
+            title="Draft Article",
+            slug="draft-article",
+            file_path="/tmp/draft.md",
+            status="draft",
+            structure_type="case-study",
+        )
+        db.add_all([published, draft])
+        db.flush()
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                ArticleStat(
+                    article_id=published.id,
+                    read_count=100,
+                    share_count=10,
+                    fetched_at=now,
+                ),
+                ArticleStat(
+                    article_id=draft.id,
+                    read_count=900,
+                    share_count=90,
+                    fetched_at=now,
+                ),
+            ]
+        )
+        db.commit()
+        db.close()
+
+        response = self.client.get("/api/analytics/overview")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertEqual(data["total_reads"], 100)
+        self.assertEqual(data["total_shares"], 10)
+        self.assertEqual(data["avg_read_per_article"], 100.0)
+        self.assertEqual(data["top_structure_types"], [
+            {"structure_type": "case-study", "count": 1, "avg_reads": 100.0}
+        ])
+
+    def test_overview_groups_missing_structure_as_uncategorized(self):
+        db = self.Session()
+        article = Article(
+            title="Uncategorized Article",
+            slug="uncategorized-article",
+            file_path="/tmp/uncategorized.md",
+            status="published",
+            structure_type=None,
+        )
+        db.add(article)
+        db.flush()
+        db.add(
+            ArticleStat(
+                article_id=article.id,
+                read_count=80,
+                fetched_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+        db.close()
+
+        response = self.client.get("/api/analytics/overview")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertEqual(data["top_structure_types"], [
+            {"structure_type": "未分类", "count": 1, "avg_reads": 80.0}
+        ])
+
     def test_articles_endpoint_does_not_duplicate_tracked_article_without_stats(self):
         db = self.Session()
         db.add(
@@ -99,7 +177,7 @@ class AnalyticsRoutesTest(unittest.TestCase):
             patch("config.Config.ARTICLES_DIR", "/tmp"),
             patch("services.article_service.scan_articles_dir", return_value=fs_articles),
         ):
-            response = self.client.get("/api/analytics/articles")
+            response = self.client.get("/api/analytics/articles?status=all")
 
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()["data"]
@@ -137,6 +215,59 @@ class AnalyticsRoutesTest(unittest.TestCase):
         rows = response.get_json()["data"]
         self.assertEqual(rows[0]["slug"], "hot-article")
         self.assertTrue(rows[0]["is_hot"])
+
+    def test_articles_endpoint_defaults_to_published_articles_only(self):
+        db = self.Session()
+        published = Article(
+            title="Published Article",
+            slug="published-article",
+            file_path="/tmp/published.md",
+            status="published",
+        )
+        draft = Article(
+            title="Draft Article",
+            slug="draft-article",
+            file_path="/tmp/draft.md",
+            status="draft",
+        )
+        db.add_all([published, draft])
+        db.flush()
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                ArticleStat(article_id=published.id, read_count=100, fetched_at=now),
+                ArticleStat(article_id=draft.id, read_count=900, fetched_at=now),
+            ]
+        )
+        db.commit()
+        db.close()
+
+        fs_articles = [
+            {
+                "file_path": "/tmp/published.md",
+                "title": "Published Article",
+                "slug": "published-article",
+                "frontmatter": {},
+                "word_count": 1200,
+            },
+            {
+                "file_path": "/tmp/draft.md",
+                "title": "Draft Article",
+                "slug": "draft-article",
+                "frontmatter": {},
+                "word_count": 900,
+            },
+        ]
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp"),
+            patch("services.article_service.scan_articles_dir", return_value=fs_articles),
+        ):
+            response = self.client.get("/api/analytics/articles")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual([row["slug"] for row in rows], ["published-article"])
 
     def test_articles_endpoint_non_hot_at_threshold(self):
         db = self.Session()
@@ -201,6 +332,63 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()["data"]
         self.assertEqual(rows, [{"label": "case-study", "avg_reads": 420, "count": 1}])
+
+    def test_insights_ignore_draft_articles(self):
+        db = self.Session()
+        published = Article(
+            title="Published Article",
+            slug="published-article",
+            file_path="/tmp/published.md",
+            status="published",
+            structure_type="case-study",
+            word_count=2600,
+        )
+        draft = Article(
+            title="Draft Article",
+            slug="draft-article",
+            file_path="/tmp/draft.md",
+            status="draft",
+            structure_type="case-study",
+            word_count=2600,
+        )
+        db.add_all([published, draft])
+        db.flush()
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                ArticleStat(article_id=published.id, read_count=100, fetched_at=now),
+                ArticleStat(article_id=draft.id, read_count=900, fetched_at=now),
+            ]
+        )
+        db.commit()
+        db.close()
+
+        fs_articles = [
+            {
+                "file_path": "/tmp/published.md",
+                "title": "Published Article",
+                "slug": "published-article",
+                "frontmatter": {"structure_type": "case-study"},
+                "word_count": 2600,
+            },
+            {
+                "file_path": "/tmp/draft.md",
+                "title": "Draft Article",
+                "slug": "draft-article",
+                "frontmatter": {"structure_type": "case-study"},
+                "word_count": 2600,
+            },
+        ]
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp"),
+            patch("services.article_service.scan_articles_dir", return_value=fs_articles),
+        ):
+            response = self.client.get("/api/analytics/insights?dimension=structure_type")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual(rows, [{"label": "case-study", "avg_reads": 100, "count": 1}])
 
     def test_fetch_stats_replaces_stale_higher_stat_with_wechat_value(self):
         db = self.Session()
