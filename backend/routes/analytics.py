@@ -305,18 +305,14 @@ def fetch_stats():
             )
 
             if existing_stat:
-                # 只在 API 数据更大时更新（防止 90 天窗口导致数据降级）
-                if new_reads >= existing_stat.read_count:
-                    existing_stat.read_count = new_reads
-                    existing_stat.share_count = new_shares
-                    existing_stat.like_count = new_likes
-                    existing_stat.comment_count = new_comments
-                    existing_stat.share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
-                    existing_stat.like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0
-                    existing_stat.fetched_at = utcnow()
-                else:
-                    # API 数据更小，只更新时间戳表示已检查过
-                    existing_stat.fetched_at = utcnow()
+                # WeChat is the source of truth; overwrite stale imported stats.
+                existing_stat.read_count = new_reads
+                existing_stat.share_count = new_shares
+                existing_stat.like_count = new_likes
+                existing_stat.comment_count = new_comments
+                existing_stat.share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
+                existing_stat.like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0
+                existing_stat.fetched_at = utcnow()
             else:
                 share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
                 like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0

@@ -119,9 +119,10 @@ class AnalyticsRoutesTest(unittest.TestCase):
         )
         db.add(article)
         db.flush()
+        article_id = article.id
         db.add(
             ArticleStat(
-                article_id=article.id,
+                article_id=article_id,
                 read_count=420,
                 share_count=12,
                 fetched_at=datetime.now(timezone.utc),
@@ -139,6 +140,61 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()["data"]
         self.assertEqual(rows, [{"label": "case-study", "avg_reads": 420, "count": 1}])
+
+    def test_fetch_stats_replaces_stale_higher_stat_with_wechat_value(self):
+        db = self.Session()
+        article = Article(
+            title="Accurate Article",
+            slug="accurate-article",
+            file_path="/tmp/accurate-article.md",
+            status="published",
+        )
+        db.add(article)
+        db.flush()
+        article_id = article.id
+        db.add(
+            ArticleStat(
+                article_id=article_id,
+                read_count=9999,
+                share_count=999,
+                like_count=99,
+                comment_count=9,
+                fetched_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch(
+                "services.wechat_service.get_published_articles",
+                return_value={"Accurate Article": {"update_time": None}},
+            ),
+            patch(
+                "services.wechat_service.fetch_real_stats",
+                return_value={
+                    "Accurate Article": {
+                        "int_page_read_count": 321,
+                        "share_count": 7,
+                        "add_to_fav_count": 3,
+                        "ori_page_read_count": 1,
+                    }
+                },
+            ),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+
+        db = self.Session()
+        stat = db.query(ArticleStat).filter(ArticleStat.article_id == article_id).one()
+        self.assertEqual(stat.read_count, 321)
+        self.assertEqual(stat.share_count, 7)
+        self.assertEqual(stat.like_count, 3)
+        self.assertEqual(stat.comment_count, 1)
+        db.close()
 
 
 if __name__ == "__main__":
