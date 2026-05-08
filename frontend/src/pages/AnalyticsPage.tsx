@@ -203,15 +203,6 @@ export default function AnalyticsPage() {
       ),
     },
     {
-      title: '字数',
-      dataIndex: 'word_count',
-      key: 'word_count',
-      width: 80,
-      render: (val: number | null) => (
-        <Text style={{ fontSize: 13 }}>{val ?? '—'}</Text>
-      ),
-    },
-    {
       title: '阅读数',
       dataIndex: 'latest_read_count',
       key: 'latest_read_count',
@@ -426,7 +417,7 @@ export default function AnalyticsPage() {
             }
             loading={articlesLoading}
             pagination={{ pageSize: 20, showSizeChanger: false }}
-            scroll={{ x: 1000 }}
+            scroll={{ x: 920 }}
             size="middle"
             locale={{
               emptyText: (
@@ -460,11 +451,6 @@ export default function AnalyticsPage() {
               key: 'structure_type',
               label: '按结构类型',
               children: <InsightsTable dimension="structure_type" />,
-            },
-            {
-              key: 'word_count_bucket',
-              label: '按字数分桶',
-              children: <InsightsTable dimension="word_count_bucket" />,
             },
           ]}
         />
