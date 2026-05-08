@@ -19,7 +19,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,7 +37,7 @@ def log(msg: str):
         f.write(line + "\n")
 
 
-def scrape_articles(headless: bool = False, login_only: bool = False):
+def scrape_articles(headless: bool = False, login_only: bool = False, dry_run: bool = False):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -84,7 +84,7 @@ def scrape_articles(headless: bool = False, login_only: bool = False):
                 log("错误：无法获取 token")
                 page.screenshot(path=os.path.join(SCRIPT_DIR, "debug_no_token.png"))
                 return None
-            log(f"Token: {token}")
+            log("Token 获取成功")
 
             # 3. 抓取发布记录页（所有已发布文章）
             articles = _scrape_publish_records(page, token)
@@ -93,7 +93,7 @@ def scrape_articles(headless: bool = False, login_only: bool = False):
                 with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
                     json.dump(articles, f, ensure_ascii=False, indent=2)
                 log(f"保存 {len(articles)} 篇文章到 {OUTPUT_JSON}")
-                _sync_to_db(articles)
+                _sync_to_db(articles, dry_run=dry_run)
             else:
                 log("未抓取到文章数据，保存调试截图...")
                 page.screenshot(path=os.path.join(SCRIPT_DIR, "debug_no_articles.png"))
@@ -409,115 +409,28 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
     return deduped
 
 
-def _sync_to_db(articles: list[dict]):
-    """将抓取数据同步到数据库"""
-    import random
-    from database import SessionLocal
-    from models import Article, ArticleStat
+def _sync_to_db(articles: list[dict], *, dry_run: bool = False):
+    """Sync scraped metrics via the shared stats service."""
+    from services.wechat_stats_sync import normalize_legacy_scraped_stats, sync_article_stats
 
-    db = SessionLocal()
-    try:
-        db_articles = db.query(Article).all()
-        db_by_title = {(a.title or "").strip(): a for a in db_articles}
-
-        updated = 0
-        created = 0
-        now = datetime.now(timezone.utc)
-
-        _STATUS_TITLES = {"已修改", "付费", "原创", "草稿", "转载", "定时发表", "发表成功"}
-        for item in articles:
-            # 安全清理：去掉标题中的换行和标签文字
-            title = item["title"].split("\n")[0].strip()
-            if title in _STATUS_TITLES or len(title) < 3:
-                continue
-            reads = item.get("reads", 0)
-            shares = item.get("shares", 0)
-            likes = item.get("likes", 0)
-            recommends = item.get("recommends", item.get("favorites", 0))
-            comments = item.get("comments", 0)
-            underlines = item.get("underlines", 0)
-
-            if reads == 0 and shares == 0 and recommends == 0 and likes == 0 and comments == 0 and underlines == 0:
-                continue
-
-            article = db_by_title.get(title)
-            if not article:
-                for db_t, db_a in db_by_title.items():
-                    if title in db_t or db_t in title:
-                        article = db_a
-                        break
-
-            if not article:
-                slug = re.sub(r'[^\w\u4e00-\u9fff]+', '-', title).strip('-').lower()
-                if not slug:
-                    slug = f"article-{random.randint(1000, 9999)}"
-                if db.query(Article).filter(Article.slug == slug).first():
-                    slug = f"{slug}-{random.randint(1000, 9999)}"
-                article = Article(title=title, slug=slug, file_path="", status="published")
-                db.add(article)
-                db.flush()
-                db_by_title[title] = article
-                created += 1
-
-            article.status = "published"
-
-            existing_stat = (
-                db.query(ArticleStat)
-                .filter(ArticleStat.article_id == article.id)
-                .first()
-            )
-
-            if existing_stat:
-                if reads >= existing_stat.read_count:
-                    existing_stat.read_count = reads
-                    existing_stat.share_count = shares
-                    existing_stat.like_count = likes
-                    existing_stat.recommend_count = recommends
-                    existing_stat.comment_count = comments
-                    existing_stat.underline_count = underlines
-                    existing_stat.share_rate = round(shares / reads, 4) if reads > 0 else 0.0
-                    existing_stat.like_rate = round(likes / reads, 4) if reads > 0 else 0.0
-                    existing_stat.fetched_at = now
-                    updated += 1
-                else:
-                    existing_stat.fetched_at = now
-            else:
-                db.add(ArticleStat(
-                    article_id=article.id,
-                    read_count=reads,
-                    share_count=shares,
-                    like_count=likes,
-                    recommend_count=recommends,
-                    comment_count=comments,
-                    underline_count=underlines,
-                    share_rate=round(shares / reads, 4) if reads > 0 else 0.0,
-                    like_rate=round(likes / reads, 4) if reads > 0 else 0.0,
-                    fetched_at=now,
-                ))
-                created += 1
-
-        db.commit()
-
-        from sqlalchemy import func
-        total = db.query(Article).count()
-        total_reads = db.query(func.sum(ArticleStat.read_count)).scalar() or 0
-
-        log(f"DB 同步完成: 更新 {updated}, 新建 {created}, 总文章 {total}, 总阅读 {total_reads}")
-
-    except Exception as e:
-        db.rollback()
-        log(f"DB 同步失败: {e}")
-        raise
-    finally:
-        db.close()
-
+    records = normalize_legacy_scraped_stats(articles)
+    result = sync_article_stats(records, dry_run=dry_run)
+    log(
+        "DB 同步完成: "
+        f"匹配 {result['matched']}, 更新 {result['updated']}, "
+        f"跳过 {result['skipped']}, 未匹配 {len(result['unmatched'])}, dry_run={result['dry_run']}"
+    )
+    if result["unmatched"]:
+        for title in result["unmatched"]:
+            log(f"未匹配文章: {title}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="微信公众号后台数据抓取")
     parser.add_argument("--login", action="store_true", help="仅登录并保存 session")
     parser.add_argument("--headless", action="store_true", help="无头模式")
+    parser.add_argument("--dry-run", action="store_true", help="只解析和匹配，不写入数据库")
     args = parser.parse_args()
 
-    result = scrape_articles(headless=args.headless, login_only=args.login)
+    result = scrape_articles(headless=args.headless, login_only=args.login, dry_run=args.dry_run)
     if result:
         log(f"完成！共 {len(result)} 篇文章")

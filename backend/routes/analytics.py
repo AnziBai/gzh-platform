@@ -6,14 +6,11 @@ from flask import Blueprint, request
 from sqlalchemy import func
 
 from database import SessionLocal
-from models import Article, ArticleStat
+from models import Article
+from services.wechat_stats_sync import normalize_api_stats, sync_article_stats
 from utils import success_response, error_response
 
 analytics_bp = Blueprint("analytics", __name__)
-
-
-def utcnow():
-    return datetime.now(timezone.utc)
 
 
 def _latest_stat(article):
@@ -300,62 +297,14 @@ def fetch_stats():
         except RuntimeError as e:
             wechat_stats_error = str(e)
 
-        # 更新统计数据（upsert：已有则更新，没有则创建）
-        # 注意：API 只返回近 90 天有活动的文章，老文章可能不在 API 结果中。
-        # 对于已有数据的文章，只在 API 数据更大时才更新（防止降级）。
-        stats_updated = 0
-        wechat_stats_lookup = _title_lookup(wechat_data)
-        for article in db_articles:
-            if article.id is None:
-                continue
-            title_key = (article.title or "").strip()
-            wx_stats = _match_by_title(wechat_data, wechat_stats_lookup, title_key)
-            if not wx_stats:
-                continue
-
-            new_reads = wx_stats.get("int_page_read_count", 0)
-            new_shares = wx_stats.get("share_count", 0)
-            new_likes = wx_stats.get("like_count", wx_stats.get("add_to_fav_count", 0))
-            new_recommends = wx_stats.get("recommend_count", 0)
-            new_comments = wx_stats.get("comment_count", wx_stats.get("ori_page_read_count", 0))
-            new_underlines = wx_stats.get("underline_count", 0)
-
-            # 查找已有的统计记录
-            existing_stat = (
-                db.query(ArticleStat)
-                .filter(ArticleStat.article_id == article.id)
-                .order_by(ArticleStat.fetched_at.desc(), ArticleStat.id.desc())
-                .first()
-            )
-
-            if existing_stat:
-                # WeChat is the source of truth; overwrite stale imported stats.
-                existing_stat.read_count = new_reads
-                existing_stat.share_count = new_shares
-                existing_stat.like_count = new_likes
-                existing_stat.recommend_count = new_recommends
-                existing_stat.comment_count = new_comments
-                existing_stat.underline_count = new_underlines
-                existing_stat.share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
-                existing_stat.like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0
-                existing_stat.fetched_at = utcnow()
-            else:
-                share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
-                like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0
-                db.add(ArticleStat(
-                    article_id=article.id,
-                    read_count=new_reads,
-                    share_count=new_shares,
-                    like_count=new_likes,
-                    recommend_count=new_recommends,
-                    comment_count=new_comments,
-                    underline_count=new_underlines,
-                    share_rate=share_rate,
-                    like_rate=like_rate,
-                    fetched_at=utcnow(),
-                ))
-            stats_updated += 1
-
+        # API 只返回近 90 天有活动的文章，老文章可能不在 API 结果中。
+        # 同步逻辑集中在 wechat_stats_sync，避免不同入口字段映射漂移。
+        sync_result = sync_article_stats(
+            normalize_api_stats(wechat_data),
+            db=db,
+            init_schema=False,
+        )
+        stats_updated = sync_result["updated"]
         db.commit()
 
         # 构造错误信息（如果有）
@@ -370,6 +319,9 @@ def fetch_stats():
             "synced": synced,
             "wechat_articles_found": len(wechat_data),
             "published_on_wechat": len(published_on_wechat),
+            "matched": sync_result["matched"],
+            "skipped": sync_result["skipped"],
+            "unmatched": sync_result["unmatched"],
             "errors": errors,
         })
     except Exception as e:
