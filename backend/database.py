@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
@@ -13,6 +15,7 @@ class Base(DeclarativeBase):
 
 def init_db():
     from models import Article, ArticleStat, Benchmark, Topic, Task  # noqa: F401
+    os.makedirs(os.path.dirname(Config.DB_PATH), exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
 
