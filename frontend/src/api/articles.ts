@@ -20,6 +20,12 @@ export interface TaskResponse {
   task_id: string
 }
 
+export interface HotReferenceArticle {
+  slug: string
+  title: string
+  read_count: number
+}
+
 export interface Task {
   id: string
   type: string
@@ -43,11 +49,21 @@ export async function getArticleBySlug(slug: string): Promise<Article> {
   return response.data.data
 }
 
-export async function generateArticle(topic: string, benchmarkSlug?: string): Promise<TaskResponse> {
+export async function generateArticle(
+  topic: string,
+  benchmarkSlug?: string,
+  referenceArticleSlug?: string
+): Promise<TaskResponse> {
   const response = await client.post<ApiResponse<TaskResponse>>('/articles/generate', {
     topic,
     benchmark_slug: benchmarkSlug,
+    reference_article_slug: referenceArticleSlug,
   })
+  return response.data.data
+}
+
+export async function getHotReferenceArticles(): Promise<HotReferenceArticle[]> {
+  const response = await client.get<ApiResponse<HotReferenceArticle[]>>('/articles/hot-references')
   return response.data.data
 }
 

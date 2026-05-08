@@ -216,11 +216,14 @@ export default function AnalyticsPage() {
       dataIndex: 'latest_read_count',
       key: 'latest_read_count',
       width: 90,
-      render: (val: number) =>
+      render: (val: number, record) =>
         val === 0 ? (
           <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
         ) : (
-          <Text style={{ fontSize: 13 }}>{val}</Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 13 }}>{val}</Text>
+            {record.is_hot && <Tag color="red" style={{ margin: 0 }}>爆款</Tag>}
+          </div>
         ),
     },
     {

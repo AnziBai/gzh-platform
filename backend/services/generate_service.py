@@ -24,7 +24,7 @@ def _strip_ansi(text: str) -> str:
     return re.sub(r'\x1b\[[0-9;]*[mGKHF]', '', text)
 
 
-def run_generate(task_id: str, topic: str, benchmark_slug: str | None = None):
+def run_generate(task_id: str, topic: str, benchmark_slug: str | None = None, reference_article_slug: str | None = None):
     """
     在后台线程中运行文章生成。
     调用 claude --print <prompt> --output-format stream-json 并流式推送日志。
@@ -51,6 +51,9 @@ def run_generate(task_id: str, topic: str, benchmark_slug: str | None = None):
             benchmark_hint = f"\n\n## 仿写模式：参考爆款素材\n\n{benchmark_content}"
         else:
             benchmark_hint = f"\n参考爆款素材关键词：{benchmark_slug}"
+
+    if reference_article_slug:
+        benchmark_hint += _build_reference_article_hint(reference_article_slug)
 
     prompt = f"""{agent_spec}
 
@@ -157,6 +160,12 @@ def run_generate(task_id: str, topic: str, benchmark_slug: str | None = None):
 
 
 def _find_claude_bin():
+    from config import Config
+
+    configured = (Config.CLAUDE_BIN or "").strip()
+    if configured and os.path.isfile(configured):
+        return configured
+
     """在常见位置查找 claude 可执行文件。"""
     # 1. PATH 中查找
     import shutil
@@ -176,6 +185,26 @@ def _find_claude_bin():
             return c
 
     return None
+
+
+def _build_reference_article_hint(reference_article_slug: str) -> str:
+    from config import Config
+    from services.article_service import parse_frontmatter
+
+    slug = (reference_article_slug or "").strip()
+    if not slug:
+        return ""
+
+    file_path = os.path.join(Config.ARTICLES_DIR, f"{slug}.md")
+    if not os.path.exists(file_path):
+        return f"\n\n## 参考爆款文章\n\n未找到本地参考文章文件：{slug}"
+
+    parsed = parse_frontmatter(file_path)
+    content = (parsed.get("content") or "").strip()
+    if not content:
+        return f"\n\n## 参考爆款文章：{slug}\n\n本地文件没有可用正文。"
+
+    return f"\n\n## 参考爆款文章：{slug}\n\n{content}"
 
 
 def _save_article(content: str, topic: str, articles_dir: str) -> str:

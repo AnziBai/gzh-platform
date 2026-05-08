@@ -1,0 +1,166 @@
+import { useEffect } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, Button, Card, Form, Input, Select, Spin, Tag, Typography, message } from 'antd'
+import { SaveOutlined } from '@ant-design/icons'
+import { getSettings, updateSettings } from '../api/settings'
+import type { SettingsUpdate } from '../api/settings'
+
+const { Text } = Typography
+
+interface SettingsFormValues {
+  wechat_app_id: string
+  wechat_app_secret?: string
+  ai_provider: string
+  ai_base_url?: string
+  ai_api_key?: string
+  ai_model?: string
+  claude_bin?: string
+}
+
+export default function SettingsPage() {
+  const [form] = Form.useForm<SettingsFormValues>()
+  const [messageApi, contextHolder] = message.useMessage()
+  const queryClient = useQueryClient()
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+  })
+
+  useEffect(() => {
+    if (!data) return
+    form.setFieldsValue({
+      wechat_app_id: data.wechat.app_id,
+      wechat_app_secret: '',
+      ai_provider: data.ai_writer.provider,
+      ai_base_url: data.ai_writer.base_url,
+      ai_api_key: '',
+      ai_model: data.ai_writer.model,
+      claude_bin: data.ai_writer.claude_bin,
+    })
+  }, [data, form])
+
+  const mutation = useMutation({
+    mutationFn: updateSettings,
+    onSuccess: () => {
+      messageApi.success('配置已保存，重启后端后生效')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (err: Error) => {
+      messageApi.error(`保存失败：${err.message}`)
+    },
+  })
+
+  const handleFinish = (values: SettingsFormValues) => {
+    const payload: SettingsUpdate = {
+      wechat: {
+        app_id: values.wechat_app_id,
+      },
+      ai_writer: {
+        provider: values.ai_provider,
+        base_url: values.ai_base_url,
+        model: values.ai_model,
+        claude_bin: values.claude_bin,
+      },
+    }
+    if (values.wechat_app_secret?.trim()) {
+      payload.wechat!.app_secret = values.wechat_app_secret.trim()
+    }
+    if (values.ai_api_key?.trim()) {
+      payload.ai_writer!.api_key = values.ai_api_key.trim()
+    }
+    mutation.mutate(payload)
+  }
+
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
+  }
+
+  return (
+    <>
+      {contextHolder}
+      <div style={{ maxWidth: 920 }}>
+        <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>
+          设置
+        </Text>
+
+        <Alert
+          type="info"
+          showIcon
+          title="这些配置只保存在当前电脑的 backend/.env"
+          description="保存后需要重启 Flask 后端。密钥字段不会回显，留空表示保留现有密钥。"
+          style={{ marginBottom: 16 }}
+        />
+
+        <Form form={form} layout="vertical" onFinish={handleFinish}>
+          <Card
+            size="small"
+            title="微信数据看板"
+            style={{ marginBottom: 16, borderRadius: 8 }}
+            extra={
+              <Tag color={data?.wechat.app_secret_configured ? 'green' : 'warning'}>
+                {data?.wechat.app_secret_configured ? 'Secret 已配置' : 'Secret 未配置'}
+              </Tag>
+            }
+          >
+            <Form.Item label="WECHAT_APP_ID" name="wechat_app_id">
+              <Input placeholder="公众号 AppID" />
+            </Form.Item>
+            <Form.Item label="WECHAT_APP_SECRET" name="wechat_app_secret">
+              <Input.Password placeholder="留空则不修改现有 Secret" autoComplete="new-password" />
+            </Form.Item>
+          </Card>
+
+          <Card
+            size="small"
+            title="AI 写作智能体"
+            style={{ marginBottom: 16, borderRadius: 8 }}
+            extra={
+              <Tag color={data?.ai_writer.api_key_configured ? 'green' : 'default'}>
+                {data?.ai_writer.api_key_configured ? 'API Key 已配置' : 'API Key 未配置'}
+              </Tag>
+            }
+          >
+            <Form.Item label="Provider" name="ai_provider">
+              <Select
+                options={[
+                  { value: 'claude_cli', label: 'Claude CLI' },
+                  { value: 'openai_compatible', label: 'OpenAI-compatible API' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label="Claude CLI 路径" name="claude_bin">
+              <Input placeholder="例如 C:/Users/me/AppData/Roaming/npm/claude.cmd" />
+            </Form.Item>
+            <Form.Item label="API Base URL" name="ai_base_url">
+              <Input placeholder="例如 https://api.deepseek.com/v1" />
+            </Form.Item>
+            <Form.Item label="API Key" name="ai_api_key">
+              <Input.Password placeholder="留空则不修改现有 API Key" autoComplete="new-password" />
+            </Form.Item>
+            <Form.Item label="Model" name="ai_model">
+              <Input placeholder="例如 deepseek-chat / gpt-4.1 / glm-4-plus" />
+            </Form.Item>
+          </Card>
+
+          <Button
+            type="primary"
+            htmlType="submit"
+            icon={<SaveOutlined />}
+            loading={mutation.isPending}
+          >
+            保存配置
+          </Button>
+        </Form>
+      </div>
+    </>
+  )
+}

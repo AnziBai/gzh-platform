@@ -24,6 +24,7 @@ export interface ArticleAnalytics {
   word_count: number | null
   publish_timestamp: string | null
   latest_read_count: number
+  is_hot: boolean
   latest_share_count: number
   latest_like_count: number
   stats_count: number

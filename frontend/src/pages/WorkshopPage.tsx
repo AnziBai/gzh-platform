@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Input, Tag, Spin, Alert, Empty, Typography, Progress, Popconfirm, message } from 'antd'
+import { Button, Input, Select, Tag, Spin, Alert, Empty, Typography, Progress, Popconfirm, message } from 'antd'
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined } from '@ant-design/icons'
 import Markdown from 'react-markdown'
-import { getArticles, getArticleBySlug, generateArticle, deleteArticle } from '../api/articles'
+import { getArticles, getArticleBySlug, generateArticle, deleteArticle, getHotReferenceArticles } from '../api/articles'
 import { useTaskStream } from '../hooks/useTaskStream'
 import type { Article } from '../api/articles'
 
@@ -19,6 +19,7 @@ export default function WorkshopPage() {
   const queryClient = useQueryClient()
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
+  const [referenceSlug, setReferenceSlug] = useState<string | undefined>()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -33,6 +34,11 @@ export default function WorkshopPage() {
     queryKey: ['article', selectedSlug],
     queryFn: () => getArticleBySlug(selectedSlug!),
     enabled: !!selectedSlug,
+  })
+
+  const { data: hotReferences } = useQuery({
+    queryKey: ['hot-reference-articles'],
+    queryFn: getHotReferenceArticles,
   })
 
   const { task, logs } = useTaskStream({
@@ -61,7 +67,7 @@ export default function WorkshopPage() {
     setGenerating(true)
     setTaskId(null)
     try {
-      const { task_id } = await generateArticle(topic.trim())
+      const { task_id } = await generateArticle(topic.trim(), undefined, referenceSlug)
       setTaskId(task_id)
       scrollLogs()
     } catch (e) {
@@ -131,6 +137,18 @@ export default function WorkshopPage() {
               onChange={(e) => setTopic(e.target.value)}
               disabled={generating}
               style={{ marginBottom: 8, fontSize: 13 }}
+            />
+            <Select
+              allowClear
+              placeholder="可选：仿写一篇爆款文章"
+              value={referenceSlug}
+              onChange={setReferenceSlug}
+              disabled={generating}
+              style={{ width: '100%', marginBottom: 8 }}
+              options={(hotReferences ?? []).map((article) => ({
+                value: article.slug,
+                label: `${article.title}（${article.read_count}阅读）`,
+              }))}
             />
             <Button
               type="primary"

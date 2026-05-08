@@ -36,6 +36,7 @@ Thumbs.db
 .omc/
 backend/.gstack/
 backend/.omc/
+backend/tests/.tmp/
 
 # Browser session data (contains cookies)
 backend/scripts/.wechat_browser_state/

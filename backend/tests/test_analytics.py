@@ -107,6 +107,67 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(rows[0]["slug"], "tracked-draft")
         self.assertEqual(rows[0]["id"], 1)
 
+    def test_articles_endpoint_marks_hot_articles(self):
+        db = self.Session()
+        article = Article(
+            title="Hot Article",
+            slug="hot-article",
+            file_path="/tmp/hot-article.md",
+            status="published",
+        )
+        db.add(article)
+        db.flush()
+        db.add(
+            ArticleStat(
+                article_id=article.id,
+                read_count=501,
+                fetched_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+        ):
+            response = self.client.get("/api/analytics/articles")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual(rows[0]["slug"], "hot-article")
+        self.assertTrue(rows[0]["is_hot"])
+
+    def test_articles_endpoint_non_hot_at_threshold(self):
+        db = self.Session()
+        article = Article(
+            title="Normal Article",
+            slug="normal-article",
+            file_path="/tmp/normal-article.md",
+            status="published",
+        )
+        db.add(article)
+        db.flush()
+        db.add(
+            ArticleStat(
+                article_id=article.id,
+                read_count=500,
+                fetched_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+        ):
+            response = self.client.get("/api/analytics/articles")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertFalse(rows[0]["is_hot"])
+
     def test_insights_include_db_only_articles(self):
         db = self.Session()
         article = Article(

@@ -18,12 +18,14 @@ def create_app():
     from routes.benchmarks import benchmarks_bp
     from routes.analytics import analytics_bp
     from routes.tasks import tasks_bp
+    from routes.settings import settings_bp
 
     app.register_blueprint(articles_bp, url_prefix="/api")
     app.register_blueprint(topics_bp, url_prefix="/api")
     app.register_blueprint(benchmarks_bp, url_prefix="/api")
     app.register_blueprint(analytics_bp, url_prefix="/api")
     app.register_blueprint(tasks_bp, url_prefix="/api")
+    app.register_blueprint(settings_bp, url_prefix="/api")
 
     @app.route("/api/health")
     def health():

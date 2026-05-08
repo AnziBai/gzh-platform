@@ -5,6 +5,7 @@ import TopicsPage from './pages/TopicsPage'
 import BenchmarksPage from './pages/BenchmarksPage'
 import PublishPage from './pages/PublishPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/workshop" element={<WorkshopPage />} />
           <Route path="/publish" element={<PublishPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

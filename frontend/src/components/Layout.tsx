@@ -5,6 +5,7 @@ import {
   EditOutlined,
   SendOutlined,
   BarChartOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 
@@ -16,6 +17,7 @@ const navItems = [
   { key: '/workshop', icon: <EditOutlined />, label: '文章工坊' },
   { key: '/publish', icon: <SendOutlined />, label: '发布中心' },
   { key: '/analytics', icon: <BarChartOutlined />, label: '数据看板' },
+  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ]
 
 export default function AppLayout() {

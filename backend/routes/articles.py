@@ -69,6 +69,41 @@ def list_articles():
         db.close()
 
 
+def _latest_stat(article):
+    if not article.stats:
+        return None
+    from datetime import datetime, timezone
+
+    fallback = datetime.min.replace(tzinfo=timezone.utc)
+    return max(article.stats, key=lambda s: s.fetched_at or fallback)
+
+
+@articles_bp.route("/articles/hot-references")
+def hot_reference_articles():
+    db = SessionLocal()
+    try:
+        result = []
+        for article in db.query(Article).all():
+            latest_stat = _latest_stat(article)
+            read_count = latest_stat.read_count if latest_stat else 0
+            if read_count <= 500:
+                continue
+            if not article.file_path or not os.path.exists(article.file_path):
+                continue
+            result.append({
+                "slug": article.slug,
+                "title": article.title,
+                "read_count": read_count,
+            })
+
+        result.sort(key=lambda item: item["read_count"], reverse=True)
+        return success_response(result)
+    except Exception as e:
+        return error_response(str(e), 500)
+    finally:
+        db.close()
+
+
 @articles_bp.route("/articles/generate", methods=["POST"])
 def generate_article():
     """触发 Claude Code 子进程生成文章，返回 task_id。"""
@@ -81,9 +116,10 @@ def generate_article():
         return error_response("topic 不能为空", 400)
 
     benchmark_slug = body.get("benchmark_slug")
+    reference_article_slug = body.get("reference_article_slug")
 
     task_id = task_manager.create_task("generate", meta={"topic": topic})
-    task_manager.run(task_id, run_generate, topic, benchmark_slug)
+    task_manager.run(task_id, run_generate, topic, benchmark_slug, reference_article_slug)
 
     return success_response({"task_id": task_id})
 
