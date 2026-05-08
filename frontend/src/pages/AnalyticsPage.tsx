@@ -60,7 +60,7 @@ function InsightsTable({ dimension }: { dimension: 'structure_type' | 'word_coun
     return (
       <Alert
         type="error"
-        message="加载失败"
+        title="加载失败"
         description={(error as Error).message}
         showIcon
       />
@@ -148,7 +148,15 @@ export default function AnalyticsPage() {
       ]
       const errors = result.errors || []
       if (errors.length > 0) {
-        messageApi.warning(`${parts.join('，')}（${errors.join('；')}）`)
+        messageApi.warning({
+          content: `${parts.join('，')}（${errors.join('；')}）`,
+          duration: 6,
+          style: {
+            marginLeft: 220,
+            maxWidth: 'min(720px, calc(100vw - 268px))',
+            whiteSpace: 'normal',
+          },
+        })
       } else {
         messageApi.success(parts.join('，'))
       }
@@ -251,7 +259,7 @@ export default function AnalyticsPage() {
     return (
       <Alert
         type="error"
-        message="加载失败"
+        title="加载失败"
         description={(overviewError as Error).message}
         showIcon
       />
@@ -268,6 +276,8 @@ export default function AnalyticsPage() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
+          gap: 12,
+          flexWrap: 'wrap',
           marginBottom: 16,
         }}
       >
@@ -285,7 +295,7 @@ export default function AnalyticsPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(6, 1fr)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
           gap: 12,
           marginBottom: 20,
         }}
@@ -351,7 +361,7 @@ export default function AnalyticsPage() {
         {articlesError ? (
           <Alert
             type="error"
-            message="加载失败"
+            title="加载失败"
             description={(articlesError as Error).message}
             showIcon
           />
@@ -364,6 +374,7 @@ export default function AnalyticsPage() {
             }
             loading={articlesLoading}
             pagination={{ pageSize: 20, showSizeChanger: false }}
+            scroll={{ x: 760 }}
             size="middle"
             locale={{
               emptyText: (
