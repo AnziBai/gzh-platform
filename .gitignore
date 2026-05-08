@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+backend/data/*.db
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent tooling state
+.gstack/
+.omc/
+backend/.gstack/
+backend/.omc/
+
+# Browser session data (contains cookies)
+backend/scripts/.wechat_browser_state/
+
+# Scraped data (not source code)
+backend/scraped_articles.json
