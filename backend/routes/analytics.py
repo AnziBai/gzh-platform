@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timezone
+import re
 
 from flask import Blueprint, request
 from sqlalchemy import func
@@ -15,6 +16,34 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
+def _latest_stat(article):
+    if not article.stats:
+        return None
+    fallback = datetime.min.replace(tzinfo=timezone.utc)
+    return max(article.stats, key=lambda s: s.fetched_at or fallback)
+
+
+def _normalize_title(title):
+    text = (title or "").strip().lower()
+    return re.sub(r"\s+", " ", text)
+
+
+def _title_lookup(items):
+    lookup = {}
+    for title, payload in items.items():
+        normalized = _normalize_title(title)
+        if normalized and normalized not in lookup:
+            lookup[normalized] = payload
+    return lookup
+
+
+def _match_by_title(items, lookup, title):
+    title = (title or "").strip()
+    if title in items:
+        return items[title]
+    return lookup.get(_normalize_title(title))
+
+
 @analytics_bp.route("/analytics/overview")
 def overview():
     db = SessionLocal()
@@ -27,34 +56,25 @@ def overview():
         )
         draft_articles = total_articles - published_articles
 
-        total_reads = (
-            db.query(func.sum(ArticleStat.read_count))
-            .join(Article, ArticleStat.article_id == Article.id)
-            .scalar() or 0
-        )
-        total_shares = (
-            db.query(func.sum(ArticleStat.share_count))
-            .join(Article, ArticleStat.article_id == Article.id)
-            .scalar() or 0
-        )
+        articles = db.query(Article).all()
+        latest_stats = [_latest_stat(article) for article in articles]
+        latest_stats = [stat for stat in latest_stats if stat is not None]
+        total_reads = sum(stat.read_count or 0 for stat in latest_stats)
+        total_shares = sum(stat.share_count or 0 for stat in latest_stats)
 
         avg_read_per_article = (
             round(total_reads / published_articles, 1) if published_articles > 0 else 0.0
         )
 
         # top structure types: group by structure_type, get avg reads from latest stat per article
-        articles_with_stats = db.query(Article).filter(Article.structure_type.isnot(None)).all()
+        articles_with_stats = [article for article in articles if article.structure_type]
 
         structure_data = {}
         for article in articles_with_stats:
             stype = article.structure_type
             if not stype:
                 continue
-            latest_stat = (
-                max(article.stats, key=lambda s: s.fetched_at)
-                if article.stats
-                else None
-            )
+            latest_stat = _latest_stat(article)
             reads = latest_stat.read_count if latest_stat else 0
             if stype not in structure_data:
                 structure_data[stype] = {"count": 0, "total_reads": 0}
@@ -107,9 +127,9 @@ def list_articles_analytics():
             fm = fs_item.get("frontmatter", {})
 
             latest_stat = None
-            if db_record and db_record.stats:
-                latest_stat = max(db_record.stats, key=lambda s: s.fetched_at)
+            if db_record:
                 seen_db_ids.add(db_record.id)
+                latest_stat = _latest_stat(db_record)
 
             result.append({
                 "id": db_record.id if db_record else None,
@@ -130,7 +150,7 @@ def list_articles_analytics():
         for db_art in db_articles:
             if db_art.id in seen_db_ids:
                 continue
-            latest_stat = max(db_art.stats, key=lambda s: s.fetched_at) if db_art.stats else None
+            latest_stat = _latest_stat(db_art)
             result.append({
                 "id": db_art.id,
                 "title": db_art.title or "",
@@ -163,7 +183,8 @@ def article_trend(article_id):
         if not article:
             return error_response("Article not found", 404)
 
-        stats = sorted(article.stats, key=lambda s: s.fetched_at)
+        fallback = datetime.min.replace(tzinfo=timezone.utc)
+        stats = sorted(article.stats, key=lambda s: s.fetched_at or fallback)
         trend = [
             {
                 "fetched_at": s.fetched_at.isoformat() if s.fetched_at else None,
@@ -233,11 +254,12 @@ def fetch_stats():
 
         synced = 0
         if published_on_wechat:
+            published_lookup = _title_lookup(published_on_wechat)
             for article in db_by_path.values():
                 if article.id is None:
                     continue
                 title_key = (article.title or "").strip()
-                wx_info = published_on_wechat.get(title_key)
+                wx_info = _match_by_title(published_on_wechat, published_lookup, title_key)
                 if wx_info:
                     article.status = "published"
                     if wx_info.get("update_time"):
@@ -260,11 +282,12 @@ def fetch_stats():
         # 注意：API 只返回近 90 天有活动的文章，老文章可能不在 API 结果中。
         # 对于已有数据的文章，只在 API 数据更大时才更新（防止降级）。
         stats_updated = 0
+        wechat_stats_lookup = _title_lookup(wechat_data)
         for article in db_by_path.values():
             if article.id is None:
                 continue
             title_key = (article.title or "").strip()
-            wx_stats = wechat_data.get(title_key)
+            wx_stats = _match_by_title(wechat_data, wechat_stats_lookup, title_key)
             if not wx_stats:
                 continue
 
@@ -277,6 +300,7 @@ def fetch_stats():
             existing_stat = (
                 db.query(ArticleStat)
                 .filter(ArticleStat.article_id == article.id)
+                .order_by(ArticleStat.fetched_at.desc(), ArticleStat.id.desc())
                 .first()
             )
 
@@ -362,11 +386,7 @@ def insights():
             buckets = {}
             for article in articles:
                 label = article.structure_type or "未分类"
-                latest_stat = (
-                    max(article.stats, key=lambda s: s.fetched_at)
-                    if article.stats
-                    else None
-                )
+                latest_stat = _latest_stat(article)
                 reads = latest_stat.read_count if latest_stat else 0
                 if label not in buckets:
                     buckets[label] = {"total_reads": 0, "count": 0}
@@ -402,11 +422,7 @@ def insights():
                 if not matched_label:
                     continue
 
-                latest_stat = (
-                    max(article.stats, key=lambda s: s.fetched_at)
-                    if article.stats
-                    else None
-                )
+                latest_stat = _latest_stat(article)
                 reads = latest_stat.read_count if latest_stat else 0
                 buckets[matched_label]["total_reads"] += reads
                 buckets[matched_label]["count"] += 1
