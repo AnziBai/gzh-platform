@@ -166,6 +166,8 @@ class AnalyticsRoutesTest(unittest.TestCase):
         db.close()
 
         with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
             patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
             patch("services.article_service.scan_articles_dir", return_value=[]),
             patch(
@@ -195,6 +197,18 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(stat.like_count, 3)
         self.assertEqual(stat.comment_count, 1)
         db.close()
+
+    def test_fetch_stats_requires_wechat_credentials(self):
+        with (
+            patch("config.Config.WECHAT_APP_ID", ""),
+            patch("config.Config.WECHAT_APP_SECRET", ""),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertEqual(data["status"], -1)
+        self.assertIn("WECHAT_APP_ID", data["message"])
 
 
 if __name__ == "__main__":

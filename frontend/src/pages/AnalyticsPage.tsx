@@ -169,6 +169,9 @@ export default function AnalyticsPage() {
   const sortedArticles = [...(articles ?? [])].sort(
     (a, b) => b.latest_read_count - a.latest_read_count
   )
+  const hasArticles = (overview?.total_articles ?? 0) > 0
+  const hasAnyStats = (articles ?? []).some((article) => article.stats_count > 0)
+  const showNoStatsAlert = hasArticles && !articlesLoading && !hasAnyStats
 
   const articleColumns: ColumnsType<ArticleAnalytics> = [
     {
@@ -291,6 +294,16 @@ export default function AnalyticsPage() {
           更新数据
         </Button>
       </div>
+
+      {showNoStatsAlert && (
+        <Alert
+          type="warning"
+          showIcon
+          title="尚未拉取到真实阅读数据"
+          description="当前数据库里没有任何文章统计样本，所以阅读量、分享数和篇均阅读都会显示为 0。请先在 backend/.env 配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET，重启后端后再点击“更新数据”。"
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <div
         style={{

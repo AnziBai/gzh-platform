@@ -23,6 +23,10 @@ client.interceptors.response.use(
     return response
   },
   (error) => {
+    const apiMessage = error?.response?.data?.message
+    if (apiMessage) {
+      return Promise.reject(new Error(apiMessage))
+    }
     if (error?.response?.status === 502) {
       return Promise.reject(
         new Error('后端服务不可达，请确认 Flask 后端已启动且 5001 端口未被防火墙拦截')

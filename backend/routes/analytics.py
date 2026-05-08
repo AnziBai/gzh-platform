@@ -210,6 +210,12 @@ def article_trend(article_id):
 def fetch_stats():
     from config import Config
     from services.article_service import scan_articles_dir, infer_structure_type
+    if not Config.WECHAT_APP_ID or not Config.WECHAT_APP_SECRET:
+        return error_response(
+            "WECHAT_APP_ID 或 WECHAT_APP_SECRET 未配置，无法拉取微信真实阅读数据。请在 backend/.env 中配置后重启后端。",
+            400,
+        )
+
     db = SessionLocal()
     try:
         # ── 步骤 1：Upsert 本地文章到数据库 ──
