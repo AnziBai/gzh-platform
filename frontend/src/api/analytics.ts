@@ -27,6 +27,9 @@ export interface ArticleAnalytics {
   is_hot: boolean
   latest_share_count: number
   latest_like_count: number
+  latest_recommend_count: number
+  latest_comment_count: number
+  latest_underline_count: number
   stats_count: number
   stats_fetched_at: string | null
 }

@@ -221,6 +221,13 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
                 return nums;
             }
 
+            function metricFromClass(root, className) {
+                const el = root.querySelector('.' + className + ' .weui-desktop-mass-media__data__inner, .' + className);
+                if (!el) return 0;
+                const m = (el.innerText || '').replace(/,/g, '').match(/\\d+/);
+                return m ? parseInt(m[0]) : 0;
+            }
+
             const results = [];
 
             // 方法1：表格行（统计列独立，不受标题数字干扰）
@@ -239,9 +246,11 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
                         results.push({
                             title,
                             reads: numbers[0] || 0,
-                            shares: numbers[1] || 0,
-                            favorites: numbers[2] || 0,
-                            likes: numbers[3] || 0,
+                            likes: numbers[1] || 0,
+                            shares: numbers[2] || 0,
+                            recommends: numbers[3] || 0,
+                            comments: numbers[4] || 0,
+                            underlines: numbers[5] || 0,
                         });
                     }
                 }
@@ -258,6 +267,27 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
                     );
                     const title = cleanTitle(titleEl?.innerText || '');
                     if (!title || title.length <= 2) continue;
+                    const classReads = metricFromClass(card, 'appmsg-view');
+                    const classLikes = metricFromClass(card, 'appmsg-like');
+                    const classShares = metricFromClass(card, 'appmsg-share');
+                    const classRecommends = metricFromClass(card, 'appmsg-haokan');
+                    const classComments = metricFromClass(card, 'appmsg-comment');
+                    const classUnderlines = metricFromClass(card, 'appmsg-underline');
+                    if (
+                        classReads || classLikes || classShares || classRecommends ||
+                        classComments || classUnderlines
+                    ) {
+                        results.push({
+                            title,
+                            reads: classReads,
+                            likes: classLikes,
+                            shares: classShares,
+                            recommends: classRecommends,
+                            comments: classComments,
+                            underlines: classUnderlines,
+                        });
+                        continue;
+                    }
                     // 排除标题文本中的数字，只从非标题区域提取统计数字
                     const titleNums = extractNumbers(title);
                     const titleText = titleEl?.innerText || '';
@@ -271,9 +301,11 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
                             results.push({
                                 title,
                                 reads: filtered[0] || 0,
-                                shares: filtered[1] || 0,
-                                favorites: filtered[2] || 0,
-                                likes: filtered[3] || 0,
+                                likes: filtered[1] || 0,
+                                shares: filtered[2] || 0,
+                                recommends: filtered[3] || 0,
+                                comments: filtered[4] || 0,
+                                underlines: filtered[5] || 0,
                             });
                         }
                     }
@@ -298,9 +330,11 @@ def _scrape_publish_records(page, token: str) -> list[dict]:
                             results.push({
                                 title,
                                 reads: filtered[0] || 0,
-                                shares: filtered.length > 1 ? filtered[1] : 0,
-                                favorites: filtered.length > 2 ? filtered[2] : 0,
-                                likes: filtered.length > 3 ? filtered[3] : 0,
+                                likes: filtered.length > 1 ? filtered[1] : 0,
+                                shares: filtered.length > 2 ? filtered[2] : 0,
+                                recommends: filtered.length > 3 ? filtered[3] : 0,
+                                comments: filtered.length > 4 ? filtered[4] : 0,
+                                underlines: filtered.length > 5 ? filtered[5] : 0,
                             });
                         }
                     }
@@ -398,10 +432,12 @@ def _sync_to_db(articles: list[dict]):
                 continue
             reads = item.get("reads", 0)
             shares = item.get("shares", 0)
-            favorites = item.get("favorites", 0)
             likes = item.get("likes", 0)
+            recommends = item.get("recommends", item.get("favorites", 0))
+            comments = item.get("comments", 0)
+            underlines = item.get("underlines", 0)
 
-            if reads == 0 and shares == 0 and favorites == 0 and likes == 0:
+            if reads == 0 and shares == 0 and recommends == 0 and likes == 0 and comments == 0 and underlines == 0:
                 continue
 
             article = db_by_title.get(title)
@@ -436,7 +472,9 @@ def _sync_to_db(articles: list[dict]):
                     existing_stat.read_count = reads
                     existing_stat.share_count = shares
                     existing_stat.like_count = likes
-                    existing_stat.comment_count = favorites
+                    existing_stat.recommend_count = recommends
+                    existing_stat.comment_count = comments
+                    existing_stat.underline_count = underlines
                     existing_stat.share_rate = round(shares / reads, 4) if reads > 0 else 0.0
                     existing_stat.like_rate = round(likes / reads, 4) if reads > 0 else 0.0
                     existing_stat.fetched_at = now
@@ -449,7 +487,9 @@ def _sync_to_db(articles: list[dict]):
                     read_count=reads,
                     share_count=shares,
                     like_count=likes,
-                    comment_count=favorites,
+                    recommend_count=recommends,
+                    comment_count=comments,
+                    underline_count=underlines,
                     share_rate=round(shares / reads, 4) if reads > 0 else 0.0,
                     like_rate=round(likes / reads, 4) if reads > 0 else 0.0,
                     fetched_at=now,

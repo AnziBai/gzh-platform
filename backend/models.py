@@ -46,7 +46,9 @@ class ArticleStat(Base):
     read_count = Column(Integer, default=0)
     share_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
+    recommend_count = Column(Integer, default=0)
     comment_count = Column(Integer, default=0)
+    underline_count = Column(Integer, default=0)
     share_rate = Column(Float)
     like_rate = Column(Float)
 

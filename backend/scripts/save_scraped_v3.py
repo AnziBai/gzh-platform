@@ -127,7 +127,7 @@ try:
         title = item["title"].strip()
         reads = item["reads"]
         shares = item["shares"]
-        favorites = item["favorites"]
+        recommends = item["favorites"]
         likes = item["likes"]
 
         article = db_by_title.get(title)
@@ -155,7 +155,9 @@ try:
             existing_stat.read_count = reads
             existing_stat.share_count = shares
             existing_stat.like_count = likes
-            existing_stat.comment_count = favorites
+            existing_stat.recommend_count = recommends
+            existing_stat.comment_count = 0
+            existing_stat.underline_count = 0
             existing_stat.share_rate = round(shares / reads, 4) if reads > 0 else 0.0
             existing_stat.like_rate = round(likes / reads, 4) if reads > 0 else 0.0
             existing_stat.fetched_at = now
@@ -163,7 +165,7 @@ try:
         else:
             db.add(ArticleStat(
                 article_id=article.id, read_count=reads, share_count=shares,
-                like_count=likes, comment_count=favorites,
+                like_count=likes, recommend_count=recommends, comment_count=0, underline_count=0,
                 share_rate=round(shares / reads, 4) if reads > 0 else 0.0,
                 like_rate=round(likes / reads, 4) if reads > 0 else 0.0,
                 fetched_at=now,

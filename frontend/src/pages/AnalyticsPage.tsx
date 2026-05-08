@@ -251,6 +251,42 @@ export default function AnalyticsPage() {
         ),
     },
     {
+      title: '推荐数',
+      dataIndex: 'latest_recommend_count',
+      key: 'latest_recommend_count',
+      width: 80,
+      render: (val: number) =>
+        val === 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        ) : (
+          <Text style={{ fontSize: 13 }}>{val}</Text>
+        ),
+    },
+    {
+      title: '留言数',
+      dataIndex: 'latest_comment_count',
+      key: 'latest_comment_count',
+      width: 80,
+      render: (val: number) =>
+        val === 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        ) : (
+          <Text style={{ fontSize: 13 }}>{val}</Text>
+        ),
+    },
+    {
+      title: '划线数',
+      dataIndex: 'latest_underline_count',
+      key: 'latest_underline_count',
+      width: 80,
+      render: (val: number) =>
+        val === 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        ) : (
+          <Text style={{ fontSize: 13 }}>{val}</Text>
+        ),
+    },
+    {
       title: '更新时间',
       dataIndex: 'stats_fetched_at',
       key: 'stats_fetched_at',
@@ -390,7 +426,7 @@ export default function AnalyticsPage() {
             }
             loading={articlesLoading}
             pagination={{ pageSize: 20, showSizeChanger: false }}
-            scroll={{ x: 760 }}
+            scroll={{ x: 1000 }}
             size="middle"
             locale={{
               emptyText: (

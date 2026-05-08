@@ -146,6 +146,9 @@ def list_articles_analytics():
                 "is_hot": bool(latest_stat and (latest_stat.read_count or 0) > 500),
                 "latest_share_count": latest_stat.share_count if latest_stat else 0,
                 "latest_like_count": latest_stat.like_count if latest_stat else 0,
+                "latest_recommend_count": latest_stat.recommend_count if latest_stat else 0,
+                "latest_comment_count": latest_stat.comment_count if latest_stat else 0,
+                "latest_underline_count": latest_stat.underline_count if latest_stat else 0,
                 "stats_count": len(db_record.stats) if db_record else 0,
                 "stats_fetched_at": latest_stat.fetched_at.isoformat() if latest_stat and latest_stat.fetched_at else None,
             })
@@ -169,6 +172,9 @@ def list_articles_analytics():
                 "is_hot": bool(latest_stat and (latest_stat.read_count or 0) > 500),
                 "latest_share_count": latest_stat.share_count if latest_stat else 0,
                 "latest_like_count": latest_stat.like_count if latest_stat else 0,
+                "latest_recommend_count": latest_stat.recommend_count if latest_stat else 0,
+                "latest_comment_count": latest_stat.comment_count if latest_stat else 0,
+                "latest_underline_count": latest_stat.underline_count if latest_stat else 0,
                 "stats_count": len(db_art.stats) if db_art.stats else 0,
                 "stats_fetched_at": latest_stat.fetched_at.isoformat() if latest_stat and latest_stat.fetched_at else None,
             })
@@ -198,7 +204,9 @@ def article_trend(article_id):
                 "read_count": s.read_count,
                 "share_count": s.share_count,
                 "like_count": s.like_count,
+                "recommend_count": s.recommend_count,
                 "comment_count": s.comment_count,
+                "underline_count": s.underline_count,
             }
             for s in stats
         ]
@@ -307,8 +315,10 @@ def fetch_stats():
 
             new_reads = wx_stats.get("int_page_read_count", 0)
             new_shares = wx_stats.get("share_count", 0)
-            new_likes = wx_stats.get("add_to_fav_count", 0)
-            new_comments = wx_stats.get("ori_page_read_count", 0)
+            new_likes = wx_stats.get("like_count", wx_stats.get("add_to_fav_count", 0))
+            new_recommends = wx_stats.get("recommend_count", 0)
+            new_comments = wx_stats.get("comment_count", wx_stats.get("ori_page_read_count", 0))
+            new_underlines = wx_stats.get("underline_count", 0)
 
             # 查找已有的统计记录
             existing_stat = (
@@ -323,7 +333,9 @@ def fetch_stats():
                 existing_stat.read_count = new_reads
                 existing_stat.share_count = new_shares
                 existing_stat.like_count = new_likes
+                existing_stat.recommend_count = new_recommends
                 existing_stat.comment_count = new_comments
+                existing_stat.underline_count = new_underlines
                 existing_stat.share_rate = round(new_shares / new_reads, 4) if new_reads > 0 else 0.0
                 existing_stat.like_rate = round(new_likes / new_reads, 4) if new_reads > 0 else 0.0
                 existing_stat.fetched_at = utcnow()
@@ -335,7 +347,9 @@ def fetch_stats():
                     read_count=new_reads,
                     share_count=new_shares,
                     like_count=new_likes,
+                    recommend_count=new_recommends,
                     comment_count=new_comments,
+                    underline_count=new_underlines,
                     share_rate=share_rate,
                     like_rate=like_rate,
                     fetched_at=utcnow(),

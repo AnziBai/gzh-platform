@@ -57,6 +57,9 @@ class AnalyticsRoutesTest(unittest.TestCase):
                     article_id=article.id,
                     read_count=150,
                     share_count=12,
+                    like_count=5,
+                    recommend_count=3,
+                    underline_count=2,
                     fetched_at=now,
                 ),
             ]
@@ -199,6 +202,10 @@ class AnalyticsRoutesTest(unittest.TestCase):
             ArticleStat(
                 article_id=article.id,
                 read_count=501,
+                share_count=4,
+                like_count=3,
+                recommend_count=2,
+                underline_count=1,
                 fetched_at=datetime.now(timezone.utc),
             )
         )
@@ -215,6 +222,10 @@ class AnalyticsRoutesTest(unittest.TestCase):
         rows = response.get_json()["data"]
         self.assertEqual(rows[0]["slug"], "hot-article")
         self.assertTrue(rows[0]["is_hot"])
+        self.assertEqual(rows[0]["latest_share_count"], 4)
+        self.assertEqual(rows[0]["latest_like_count"], 3)
+        self.assertEqual(rows[0]["latest_recommend_count"], 2)
+        self.assertEqual(rows[0]["latest_underline_count"], 1)
 
     def test_articles_endpoint_defaults_to_published_articles_only(self):
         db = self.Session()
@@ -402,14 +413,16 @@ class AnalyticsRoutesTest(unittest.TestCase):
         db.flush()
         article_id = article.id
         db.add(
-            ArticleStat(
-                article_id=article_id,
-                read_count=9999,
-                share_count=999,
-                like_count=99,
-                comment_count=9,
-                fetched_at=datetime.now(timezone.utc) - timedelta(days=1),
-            )
+                ArticleStat(
+                    article_id=article_id,
+                    read_count=9999,
+                    share_count=999,
+                    like_count=99,
+                    comment_count=9,
+                    recommend_count=8,
+                    underline_count=7,
+                    fetched_at=datetime.now(timezone.utc) - timedelta(days=1),
+                )
         )
         db.commit()
         db.close()
@@ -429,8 +442,10 @@ class AnalyticsRoutesTest(unittest.TestCase):
                     "Accurate Article": {
                         "int_page_read_count": 321,
                         "share_count": 7,
-                        "add_to_fav_count": 3,
-                        "ori_page_read_count": 1,
+                        "like_count": 3,
+                        "recommend_count": 2,
+                        "comment_count": 1,
+                        "underline_count": 4,
                     }
                 },
             ),
@@ -445,6 +460,8 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(stat.share_count, 7)
         self.assertEqual(stat.like_count, 3)
         self.assertEqual(stat.comment_count, 1)
+        self.assertEqual(stat.recommend_count, 2)
+        self.assertEqual(stat.underline_count, 4)
         db.close()
 
     def test_fetch_stats_updates_articles_with_duplicate_file_paths(self):

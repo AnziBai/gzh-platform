@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from config import Config
@@ -17,6 +17,23 @@ def init_db():
     from models import Article, ArticleStat, Benchmark, Topic, Task  # noqa: F401
     os.makedirs(os.path.dirname(Config.DB_PATH), exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _ensure_article_stats_columns()
+
+
+def _ensure_article_stats_columns():
+    inspector = inspect(engine)
+    if "article_stats" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("article_stats")}
+    missing_columns = {
+        "recommend_count": "INTEGER DEFAULT 0",
+        "underline_count": "INTEGER DEFAULT 0",
+    }
+    with engine.begin() as conn:
+        for name, definition in missing_columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE article_stats ADD COLUMN {name} {definition}"))
 
 
 def get_db():
