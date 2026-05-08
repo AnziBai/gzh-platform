@@ -46,6 +46,11 @@ def _to_int(value) -> int:
         return 0
 
 
+def _is_fatal_stats_error(error: RuntimeError) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in ("40164", "42001", "45009", "token", "quota"))
+
+
 def get_access_token() -> str:
     """
     获取有效的 access_token，自动刷新（提前10分钟）。
@@ -185,7 +190,7 @@ def get_article_summary_by_date(begin_date: str, end_date: str) -> list[dict]:
     return data.get("list", [])
 
 
-def fetch_real_stats(days_back: int = 90) -> dict[str, dict]:
+def fetch_real_stats(days_back: int = 365) -> dict[str, dict]:
     """
     拉取已发布文章的累计统计数据。
 
@@ -218,32 +223,32 @@ def fetch_real_stats(days_back: int = 90) -> dict[str, dict]:
     # 先拿一次 token（缓存），避免并发线程各自竞争刷新
     get_access_token()
 
-    fatal_error: list[RuntimeError] = []
+    from config import Config
+
+    max_workers = max(1, int(getattr(Config, "WECHAT_STATS_MAX_WORKERS", 1) or 1))
 
     def _fetch_one(date_str: str) -> tuple[str, list[dict]]:
         try:
             items = get_article_summary_by_date(date_str, date_str)
             return date_str, items
         except RuntimeError as e:
-            if "40164" in str(e) or "42001" in str(e) or "token" in str(e).lower():
-                fatal_error.append(e)
-                return date_str, []
+            if _is_fatal_stats_error(e):
+                raise
             logger.warning("查询日期 %s 失败，跳过: %s", date_str, e)
             return date_str, []
 
     # 并发查询，最多 8 个线程（避免触发微信限流）
     day_results: dict[str, list[dict]] = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(_fetch_one, d): d for d in dates}
-        for future in as_completed(futures):
-            date_str, items = future.result()
+    if max_workers == 1:
+        for date_str in dates:
+            date_str, items = _fetch_one(date_str)
             day_results[date_str] = items
-            if fatal_error:
-                pool.shutdown(wait=False, cancel_futures=True)
-                break
-
-    if fatal_error:
-        raise fatal_error[0]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_fetch_one, d): d for d in dates}
+            for future in as_completed(futures):
+                date_str, items = future.result()
+                day_results[date_str] = items
 
     # 聚合数据：getarticlesummary 返回每日数据，按标题求和得到累计值
     result_by_key: dict[str, dict] = {}

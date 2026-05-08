@@ -43,6 +43,21 @@ class WechatServiceTest(unittest.TestCase):
         self.assertEqual(stats["Same Article"]["add_to_fav_count"], 3)
         self.assertEqual(stats["Same Article"]["ori_page_read_count"], 1)
 
+    def test_fetch_real_stats_stops_on_daily_quota_limit(self):
+        with (
+            patch("services.wechat_service.get_access_token", return_value="token"),
+            patch(
+                "services.wechat_service.get_article_summary_by_date",
+                side_effect=RuntimeError(
+                    "getarticlesummary API error: errcode=45009, errmsg=reach max api daily quota limit"
+                ),
+            ) as get_summary,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "45009"):
+                wechat_service.fetch_real_stats(days_back=3)
+
+        self.assertEqual(get_summary.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

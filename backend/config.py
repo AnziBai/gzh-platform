@@ -14,6 +14,8 @@ class Config:
 
     WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
     WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
+    WECHAT_STATS_DAYS_BACK = int(os.getenv("WECHAT_STATS_DAYS_BACK", "365"))
+    WECHAT_STATS_MAX_WORKERS = int(os.getenv("WECHAT_STATS_MAX_WORKERS", "1"))
 
     AI_PROVIDER = os.getenv("AI_PROVIDER", "claude_cli")
     AI_BASE_URL = os.getenv("AI_BASE_URL", "")

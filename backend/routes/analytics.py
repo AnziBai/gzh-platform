@@ -282,7 +282,8 @@ def fetch_stats():
         wechat_data = {}
         wechat_stats_error = None
         try:
-            wechat_data = fetch_real_stats(days_back=90)
+            from config import Config
+            wechat_data = fetch_real_stats(days_back=Config.WECHAT_STATS_DAYS_BACK)
         except RuntimeError as e:
             wechat_stats_error = str(e)
 

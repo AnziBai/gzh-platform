@@ -362,6 +362,21 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(data["status"], -1)
         self.assertIn("WECHAT_APP_ID", data["message"])
 
+    def test_fetch_stats_uses_configured_history_window(self):
+        with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
+            patch("config.Config.WECHAT_STATS_DAYS_BACK", 365),
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch("services.wechat_service.get_published_articles", return_value={}),
+            patch("services.wechat_service.fetch_real_stats", return_value={}) as fetch_real_stats,
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+        fetch_real_stats.assert_called_once_with(days_back=365)
+
 
 if __name__ == "__main__":
     unittest.main()
