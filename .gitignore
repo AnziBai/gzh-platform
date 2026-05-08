@@ -13,8 +13,8 @@ venv/
 .env.local
 .env.*.local
 
-# Database
-backend/data/*.db
+# Database (gzh_platform.db is tracked intentionally)
+# backend/data/*.db
 
 # Node
 node_modules/
