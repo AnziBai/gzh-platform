@@ -8,6 +8,7 @@ wechat_service.py — 微信公众号 API 客户端
 """
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
@@ -27,6 +28,22 @@ def _get_proxies() -> dict | None:
     from config import Config
     proxy = Config.HTTPS_PROXY.strip() if Config.HTTPS_PROXY else ""
     return {"https": proxy, "http": proxy} if proxy else None
+
+
+def _normalize_title(title: str | None) -> str:
+    text = (title or "").strip().lower()
+    return re.sub(r"\s+", " ", text)
+
+
+def _display_title(title: str | None) -> str:
+    return re.sub(r"\s+", " ", (title or "").strip())
+
+
+def _to_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def get_access_token() -> str:
@@ -229,23 +246,31 @@ def fetch_real_stats(days_back: int = 90) -> dict[str, dict]:
         raise fatal_error[0]
 
     # 聚合数据：getarticlesummary 返回每日数据，按标题求和得到累计值
-    result: dict[str, dict] = {}
+    result_by_key: dict[str, dict] = {}
     for date_str in sorted(day_results):
         for item in day_results[date_str]:
-            title = item.get("title", "").strip()
-            if not title:
+            title = _display_title(item.get("title"))
+            title_key = _normalize_title(title)
+            if not title_key:
                 continue
-            if title not in result:
-                result[title] = {
+            if title_key not in result_by_key:
+                result_by_key[title_key] = {
+                    "title": title,
                     "int_page_read_count": 0,
                     "share_count": 0,
                     "add_to_fav_count": 0,
                     "ori_page_read_count": 0,
                 }
-            result[title]["int_page_read_count"] += item.get("int_page_read_count", 0)
-            result[title]["share_count"] += item.get("share_count", 0)
-            result[title]["add_to_fav_count"] += item.get("add_to_fav_count", 0)
-            result[title]["ori_page_read_count"] += item.get("ori_page_read_count", 0)
+            row = result_by_key[title_key]
+            row["int_page_read_count"] += _to_int(item.get("int_page_read_count"))
+            row["share_count"] += _to_int(item.get("share_count"))
+            row["add_to_fav_count"] += _to_int(item.get("add_to_fav_count"))
+            row["ori_page_read_count"] += _to_int(item.get("ori_page_read_count"))
+
+    result = {
+        stats.pop("title"): stats
+        for stats in result_by_key.values()
+    }
 
     logger.info("fetch_real_stats 完成，获取到 %d 篇文章数据", len(result))
     return result

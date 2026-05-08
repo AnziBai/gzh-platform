@@ -364,12 +364,14 @@ def insights():
         from config import Config
         from services.article_service import scan_articles_dir
         fs_articles = scan_articles_dir(Config.ARTICLES_DIR)
-        db_by_path = {a.file_path: a for a in db.query(Article).all()}
+        db_articles = db.query(Article).all()
+        db_by_path = {a.file_path: a for a in db_articles}
 
         # Build unified article list with structure_type and latest stats
         class _Art:
             pass
         unified = []
+        seen_db_ids = set()
         for fs_item in fs_articles:
             fp = fs_item["file_path"]
             db_rec = db_by_path.get(fp)
@@ -378,6 +380,17 @@ def insights():
             a.structure_type = fm.get("structure_type") or (db_rec.structure_type if db_rec else None)
             a.word_count = db_rec.word_count if db_rec else fs_item.get("word_count")
             a.stats = db_rec.stats if db_rec else []
+            unified.append(a)
+            if db_rec:
+                seen_db_ids.add(db_rec.id)
+
+        for db_rec in db_articles:
+            if db_rec.id in seen_db_ids:
+                continue
+            a = _Art()
+            a.structure_type = db_rec.structure_type
+            a.word_count = db_rec.word_count
+            a.stats = db_rec.stats or []
             unified.append(a)
 
         articles = unified

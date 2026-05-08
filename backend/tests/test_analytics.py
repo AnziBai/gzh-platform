@@ -107,6 +107,39 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(rows[0]["slug"], "tracked-draft")
         self.assertEqual(rows[0]["id"], 1)
 
+    def test_insights_include_db_only_articles(self):
+        db = self.Session()
+        article = Article(
+            title="Imported Article",
+            slug="imported-article",
+            file_path="C:/old-machine/imported-article.md",
+            status="published",
+            structure_type="case-study",
+            word_count=2600,
+        )
+        db.add(article)
+        db.flush()
+        db.add(
+            ArticleStat(
+                article_id=article.id,
+                read_count=420,
+                share_count=12,
+                fetched_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+        ):
+            response = self.client.get("/api/analytics/insights?dimension=structure_type")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual(rows, [{"label": "case-study", "avg_reads": 420, "count": 1}])
+
 
 if __name__ == "__main__":
     unittest.main()
