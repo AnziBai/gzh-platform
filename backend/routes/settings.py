@@ -28,6 +28,10 @@ def update_settings():
     for key, value in updates.items():
         setattr(Config, key, value)
 
+    if "WECHAT_APP_ID" in updates or "WECHAT_APP_SECRET" in updates:
+        from services.wechat_service import reset_access_token_cache
+        reset_access_token_cache()
+
     return success_response(settings_payload(Config))
 
 

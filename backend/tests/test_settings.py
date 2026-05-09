@@ -42,6 +42,7 @@ class SettingsRoutesTest(unittest.TestCase):
         with (
             patch("config.Config.ENV_PATH", "backend/.env"),
             patch("services.settings_service.update_env_file") as update_env_file,
+            patch("services.wechat_service.reset_access_token_cache") as reset_access_token_cache,
         ):
             response = self.client.put(
                 "/api/settings",
@@ -62,6 +63,7 @@ class SettingsRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         update_env_file.assert_called_once()
+        reset_access_token_cache.assert_called_once()
         _, updates = update_env_file.call_args.args
         self.assertEqual(updates["WECHAT_APP_ID"], "wx-new")
         self.assertEqual(updates["WECHAT_APP_SECRET"], "wx-secret")

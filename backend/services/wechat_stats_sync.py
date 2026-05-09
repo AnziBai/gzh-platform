@@ -42,7 +42,7 @@ def normalize_api_stats(stats_by_title: dict[str, dict]) -> list[dict]:
             "share_count": to_int(stats.get("share_count")),
             "like_count": to_int(stats.get("like_count")),
             "recommend_count": to_int(stats.get("recommend_count", stats.get("add_to_fav_count"))),
-            "comment_count": to_int(stats.get("comment_count", stats.get("ori_page_read_count"))),
+            "comment_count": to_int(stats.get("comment_count")),
             "underline_count": to_int(stats.get("underline_count")),
             "source": "api",
         })
@@ -72,9 +72,15 @@ def _find_article(db_by_title: dict[str, Article], title: str) -> Article | None
     if key in db_by_title:
         return db_by_title[key]
 
+    candidates = []
     for db_key, article in db_by_title.items():
         if key and db_key and (key in db_key or db_key in key):
-            return article
+            shorter = min(len(key), len(db_key))
+            longer = max(len(key), len(db_key))
+            if longer and shorter / longer >= 0.75:
+                candidates.append(article)
+    if len(candidates) == 1:
+        return candidates[0]
     return None
 
 

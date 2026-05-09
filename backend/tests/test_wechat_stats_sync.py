@@ -106,10 +106,30 @@ class WechatStatsSyncTest(unittest.TestCase):
             "share_count": 4,
             "like_count": 0,
             "recommend_count": 2,
-            "comment_count": 1,
+            "comment_count": 0,
             "underline_count": 0,
             "source": "api",
         }])
+
+    def test_sync_does_not_use_ambiguous_partial_title_match(self):
+        db = self.Session()
+        db.add_all([
+            Article(title="alpha beta long", slug="alpha-beta-long", status="draft"),
+            Article(title="alpha beta other", slug="alpha-beta-other", status="draft"),
+        ])
+        db.commit()
+        db.close()
+
+        result = sync_article_stats([
+            {"title": "alpha beta", "read_count": 8, "share_count": 4}
+        ])
+
+        self.assertEqual(result["matched"], 0)
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(result["unmatched"], ["alpha beta"])
+        db = self.Session()
+        self.assertEqual(db.query(ArticleStat).count(), 0)
+        db.close()
 
 
 if __name__ == "__main__":

@@ -24,6 +24,12 @@ _cached_token: Optional[str] = None
 _token_expires_at: float = 0.0  # Unix timestamp
 
 
+def reset_access_token_cache() -> None:
+    global _cached_token, _token_expires_at
+    _cached_token = None
+    _token_expires_at = 0.0
+
+
 def _get_proxies() -> dict | None:
     from config import Config
     proxy = Config.HTTPS_PROXY.strip() if Config.HTTPS_PROXY else ""
