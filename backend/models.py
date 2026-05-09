@@ -103,3 +103,15 @@ class Task(Base):
 
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class SyncStatus(Base):
+    __tablename__ = "sync_status"
+
+    id = Column(Integer, primary_key=True)
+    status = Column(String, nullable=False, default="never")
+    message = Column(String)
+    result_json = Column(Text)
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

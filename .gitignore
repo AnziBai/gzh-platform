@@ -48,3 +48,4 @@ backend/scripts/debug_*.png
 backend/scripts/debug_*.html
 backend/scripts/explore_*.png
 backend/scripts/scrape.log
+backend/scripts/wechat_stats_sync.log

@@ -114,3 +114,19 @@ python scripts/sync_wechat_stats.py --source json --json-path scraped_articles.j
 Use `--dry-run` first when importing scraped or saved data. The script reports
 matched, unmatched, and ambiguous titles; ambiguous titles are skipped instead of
 being written to the database.
+
+### Keeping Analytics Fresh
+
+The dashboard shows the latest sync status from `GET /api/analytics/sync-status`
+and refreshes that local status every minute while the page is open.
+
+For unattended updates on Windows, create a Task Scheduler job that runs:
+
+```bat
+backend\scripts\run_wechat_stats_sync.bat
+```
+
+A practical starting schedule is twice per day, for example 09:00 and 18:00.
+If you publish frequently, run it every 2-4 hours. The script records the latest
+success or failure in the local database, so the dashboard can show whether data
+is fresh or whether the last sync failed.

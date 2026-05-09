@@ -80,6 +80,20 @@ export async function fetchStats(): Promise<FetchStatsResult> {
   return response.data.data
 }
 
+export interface SyncStatus {
+  status: 'never' | 'success' | 'failed'
+  message: string
+  result: FetchStatsResult | null
+  started_at: string | null
+  finished_at: string | null
+  updated_at: string | null
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const response = await client.get<ApiResponse<SyncStatus>>('/analytics/sync-status')
+  return response.data.data
+}
+
 export async function getInsights(dimension: InsightDimension): Promise<InsightItem[]> {
   const response = await client.get<ApiResponse<InsightItem[]>>('/analytics/insights', {
     params: { dimension },

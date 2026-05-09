@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
-from models import Article, ArticleStat
+from models import Article, ArticleStat, SyncStatus
 from routes.analytics import analytics_bp
 
 
@@ -581,6 +581,47 @@ class AnalyticsRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         fetch_real_stats.assert_called_once_with(days_back=365)
+
+    def test_sync_status_endpoint_returns_latest_sync_state(self):
+        db = self.Session()
+        db.add(
+            SyncStatus(
+                id=1,
+                status="success",
+                message="updated 2 articles",
+                result_json='{"updated": 2}',
+            )
+        )
+        db.commit()
+        db.close()
+
+        response = self.client.get("/api/analytics/sync-status")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["message"], "updated 2 articles")
+        self.assertEqual(data["result"]["updated"], 2)
+
+    def test_fetch_stats_records_successful_sync_status(self):
+        with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
+            patch("config.Config.WECHAT_STATS_DAYS_BACK", 365),
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch("services.wechat_service.get_published_articles", return_value={}),
+            patch("services.wechat_service.fetch_real_stats", return_value={}),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+        db = self.Session()
+        status = db.query(SyncStatus).filter_by(id=1).one()
+        self.assertEqual(status.status, "success")
+        self.assertIn("更新 0 篇", status.message)
+        self.assertIn('"updated": 0', status.result_json)
+        db.close()
 
     def test_fetch_stats_reports_ambiguous_matches_without_writing_stats(self):
         db = self.Session()

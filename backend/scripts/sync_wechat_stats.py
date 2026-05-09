@@ -22,6 +22,8 @@ from services.wechat_stats_sync import (
     normalize_legacy_scraped_stats,
     sync_article_stats,
 )
+from database import SessionLocal
+from services.sync_status_service import record_sync_failure, record_sync_success
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -55,9 +57,25 @@ def main():
     parser.add_argument("--json-path", default=str(DEFAULT_JSON_PATH))
     args = parser.parse_args()
 
-    records = load_records(args)
-    result = sync_article_stats(records, dry_run=args.dry_run)
-    result["parsed"] = len(records)
+    try:
+        records = load_records(args)
+        result = sync_article_stats(records, dry_run=args.dry_run)
+        result["parsed"] = len(records)
+        if not args.dry_run:
+            db = SessionLocal()
+            try:
+                record_sync_success(db, result)
+                db.commit()
+            finally:
+                db.close()
+    except Exception as exc:
+        db = SessionLocal()
+        try:
+            record_sync_failure(db, str(exc))
+            db.commit()
+        finally:
+            db.close()
+        raise
 
     print("=== WeChat Stats Sync ===")
     for key in ("parsed", "matched", "updated", "skipped", "dry_run"):

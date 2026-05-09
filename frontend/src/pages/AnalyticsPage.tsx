@@ -25,6 +25,7 @@ import {
   getArticlesAnalytics,
   fetchStats,
   getInsights,
+  getSyncStatus,
 } from '../api/analytics'
 import type { ArticleAnalytics, InsightItem } from '../api/analytics'
 import type { ColumnsType } from 'antd/es/table'
@@ -134,12 +135,19 @@ export default function AnalyticsPage() {
     queryFn: getArticlesAnalytics,
   })
 
+  const { data: syncStatus } = useQuery({
+    queryKey: ['analytics-sync-status'],
+    queryFn: getSyncStatus,
+    refetchInterval: 60_000,
+  })
+
   const fetchStatsMutation = useMutation({
     mutationFn: fetchStats,
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['analytics-overview'] })
       queryClient.invalidateQueries({ queryKey: ['analytics-articles'] })
       queryClient.invalidateQueries({ queryKey: ['insights'] })
+      queryClient.invalidateQueries({ queryKey: ['analytics-sync-status'] })
 
       const parts = [
         `已同步 ${result.synced} 篇`,
@@ -324,6 +332,13 @@ export default function AnalyticsPage() {
           marginBottom: 16,
         }}
       >
+        {syncStatus && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            最近同步：
+            {syncStatus.finished_at ? formatDate(syncStatus.finished_at) : '尚未同步'}
+            {syncStatus.message ? ` · ${syncStatus.message}` : ''}
+          </Text>
+        )}
         <Text strong style={{ fontSize: 15 }}>数据看板</Text>
         <Button
           type="primary"

@@ -8,6 +8,7 @@ from sqlalchemy import func
 
 from database import SessionLocal
 from models import Article
+from services.sync_status_service import get_sync_status, record_sync_failure, record_sync_success
 from services.wechat_stats_sync import normalize_api_stats, sync_article_stats
 from utils import success_response, error_response
 
@@ -321,7 +322,7 @@ def fetch_stats():
         if wechat_stats_error:
             errors.append(f"统计数据拉取失败: {wechat_stats_error}")
 
-        return success_response({
+        result_payload = {
             "updated": stats_updated,
             "synced": synced,
             "wechat_articles_found": len(wechat_data),
@@ -333,9 +334,28 @@ def fetch_stats():
             "matches": sync_result["matches"],
             "warnings": warnings,
             "errors": errors,
-        })
+        }
+        record_sync_success(db, result_payload)
+        db.commit()
+        return success_response(result_payload)
     except Exception as e:
         db.rollback()
+        try:
+            record_sync_failure(db, str(e))
+            db.commit()
+        except Exception:
+            db.rollback()
+        return error_response(str(e), 500)
+    finally:
+        db.close()
+
+
+@analytics_bp.route("/analytics/sync-status")
+def sync_status():
+    db = SessionLocal()
+    try:
+        return success_response(get_sync_status(db))
+    except Exception as e:
         return error_response(str(e), 500)
     finally:
         db.close()
