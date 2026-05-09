@@ -6,7 +6,11 @@ from unittest.mock import patch
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from services.generate_service import _build_reference_article_hint, _find_claude_bin
+from services.generate_service import (
+    _build_reference_article_hint,
+    _find_claude_bin,
+    _validate_generated_article,
+)
 
 
 class GenerateServiceTest(unittest.TestCase):
@@ -36,6 +40,17 @@ class GenerateServiceTest(unittest.TestCase):
 
         self.assertIn("hot-slug", hint)
         self.assertIn("参考正文", hint)
+
+    def test_validate_generated_article_requires_frontmatter(self):
+        with self.assertRaisesRegex(RuntimeError, "frontmatter"):
+            _validate_generated_article("# title\n\nbody")
+
+    def test_validate_generated_article_requires_title(self):
+        with self.assertRaisesRegex(RuntimeError, "title"):
+            _validate_generated_article("---\nslug: test\n---\n\n正文")
+
+    def test_validate_generated_article_accepts_title_and_body(self):
+        _validate_generated_article("---\ntitle: Test\nslug: test\n---\n\n正文")
 
 
 if __name__ == "__main__":

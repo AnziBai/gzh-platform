@@ -38,3 +38,21 @@ export async function updateSettings(data: SettingsUpdate): Promise<Settings> {
   const response = await client.put<ApiResponse<Settings>>('/settings', data)
   return response.data.data
 }
+
+export interface ConnectionTestResult {
+  ok: boolean
+  provider?: string
+  model?: string
+  app_id?: string
+  message: string
+}
+
+export async function testAiSettings(): Promise<ConnectionTestResult> {
+  const response = await client.post<ApiResponse<ConnectionTestResult>>('/settings/test-ai')
+  return response.data.data
+}
+
+export async function testWechatSettings(): Promise<ConnectionTestResult> {
+  const response = await client.post<ApiResponse<ConnectionTestResult>>('/settings/test-wechat')
+  return response.data.data
+}

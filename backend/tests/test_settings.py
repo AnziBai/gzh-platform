@@ -75,6 +75,25 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertNotIn("wx-secret", str(data))
         self.assertNotIn("sk-new", str(data))
 
+    def test_test_ai_settings_returns_masked_result(self):
+        with patch(
+            "services.ai_client.test_ai_connection",
+            return_value={"ok": True, "provider": "openai_compatible", "model": "m", "message": "OK"},
+        ):
+            response = self.client.post("/api/settings/test-ai")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"]["message"], "OK")
+
+    def test_test_wechat_settings_requires_credentials(self):
+        with (
+            patch("config.Config.WECHAT_APP_ID", ""),
+            patch("config.Config.WECHAT_APP_SECRET", ""),
+        ):
+            response = self.client.post("/api/settings/test-wechat")
+
+        self.assertEqual(response.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
