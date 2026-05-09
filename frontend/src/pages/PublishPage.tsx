@@ -153,7 +153,7 @@ export default function PublishPage() {
   }
 
   if (error) {
-    return <Alert type="error" message="加载失败" description={(error as Error).message} showIcon />
+    return <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
   }
 
   const isPublishing = publishState.taskId !== null && task?.status !== 'completed' && task?.status !== 'failed'
@@ -249,12 +249,12 @@ export default function PublishPage() {
           <Alert
             type="success"
             style={{ marginTop: 12 }}
-            message={`发布成功！media_id: ${(task.result as Record<string, string>).media_id ?? '—'}`}
+            title={`发布成功！media_id: ${(task.result as Record<string, string>).media_id ?? '—'}`}
             showIcon
           />
         )}
         {task?.status === 'failed' && (
-          <Alert type="error" style={{ marginTop: 12 }} message={task.error ?? '发布失败'} showIcon />
+          <Alert type="error" style={{ marginTop: 12 }} title={task.error ?? '发布失败'} showIcon />
         )}
       </Modal>
     </>

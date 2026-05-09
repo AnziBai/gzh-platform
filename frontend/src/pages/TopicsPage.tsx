@@ -215,7 +215,7 @@ export default function TopicsPage() {
   const isStreaming = scraping && taskId !== null && task?.status !== 'completed' && task?.status !== 'failed'
 
   if (error) {
-    return <Alert type="error" message="加载失败" description={(error as Error).message} showIcon />
+    return <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
   }
 
   return (

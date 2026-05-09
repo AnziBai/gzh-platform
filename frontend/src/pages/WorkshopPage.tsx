@@ -100,7 +100,7 @@ export default function WorkshopPage() {
 
   if (error) {
     return (
-      <Alert type="error" message="加载失败" description={(error as Error).message} showIcon />
+      <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
     )
   }
 
@@ -311,7 +311,7 @@ export default function WorkshopPage() {
               <Spin size="large" />
             </div>
           ) : !selected ? (
-            <Alert type="error" message="文章加载失败" showIcon />
+            <Alert type="error" title="文章加载失败" showIcon />
           ) : (
             <>
               <Title level={3} style={{ marginTop: 0, marginBottom: 16 }}>

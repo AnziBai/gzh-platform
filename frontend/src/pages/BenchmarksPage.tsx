@@ -202,7 +202,7 @@ export default function BenchmarksPage() {
 
   if (error) {
     return (
-      <Alert type="error" message="加载失败" description={(error as Error).message} showIcon />
+      <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
     )
   }
 

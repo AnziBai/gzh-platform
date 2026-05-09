@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, Form, Input, List, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Input, Select, Space, Spin, Tag, Typography, message } from 'antd'
 import {
   ApiOutlined,
   CheckCircleOutlined,
@@ -156,37 +156,41 @@ export default function SettingsPage() {
           {diagnostics.isLoading ? (
             <Spin />
           ) : diagnostics.error ? (
-            <Alert type="error" showIcon message={(diagnostics.error as Error).message} />
+            <Alert type="error" showIcon title={(diagnostics.error as Error).message} />
           ) : (
-            <List
-              size="small"
-              dataSource={diagnostics.data?.checks ?? []}
-              renderItem={(item) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={
-                      item.ok ? (
-                        <CheckCircleOutlined style={{ color: '#389e0d' }} />
-                      ) : (
-                        <CloseCircleOutlined style={{ color: '#d48806' }} />
-                      )
-                    }
-                    title={
-                      <Space>
-                        <Text>{item.label}</Text>
-                        <Tag color={item.ok ? 'green' : 'warning'}>{item.ok ? 'OK' : '待处理'}</Tag>
-                      </Space>
-                    }
-                    description={
-                      <div>
-                        <div>{item.detail}</div>
-                        {!item.ok && item.action && <Text type="secondary">{item.action}</Text>}
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+            <div>
+              {(diagnostics.data?.checks ?? []).map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    display: 'flex',
+                    gap: 12,
+                    padding: '10px 0',
+                    borderBottom: '1px solid #f0f0f0',
+                  }}
+                >
+                  <div style={{ paddingTop: 2 }}>
+                    {item.ok ? (
+                      <CheckCircleOutlined style={{ color: '#389e0d' }} />
+                    ) : (
+                      <CloseCircleOutlined style={{ color: '#d48806' }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Space wrap>
+                      <Text>{item.label}</Text>
+                      <Tag color={item.ok ? 'green' : 'warning'}>{item.ok ? 'OK' : '待处理'}</Tag>
+                    </Space>
+                    <div style={{ marginTop: 4, wordBreak: 'break-all' }}>{item.detail}</div>
+                    {!item.ok && item.action && (
+                      <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                        {item.action}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </Card>
 
