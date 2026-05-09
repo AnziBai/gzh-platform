@@ -13,8 +13,8 @@ venv/
 .env.local
 .env.*.local
 
-# Database (gzh_platform.db is tracked intentionally)
-# backend/data/*.db
+# Database
+backend/data/*.db
 
 # Node
 node_modules/
@@ -43,3 +43,8 @@ backend/scripts/.wechat_browser_state/
 
 # Scraped data (not source code)
 backend/scraped_articles.json
+backend/scripts/publish_records.html
+backend/scripts/debug_*.png
+backend/scripts/debug_*.html
+backend/scripts/explore_*.png
+backend/scripts/scrape.log

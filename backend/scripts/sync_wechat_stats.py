@@ -26,7 +26,7 @@ from services.wechat_stats_sync import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = SCRIPT_DIR.parent
-DEFAULT_HTML_PATH = SCRIPT_DIR / "debug_publish_page.html"
+DEFAULT_HTML_PATH = SCRIPT_DIR / "publish_records.html"
 DEFAULT_JSON_PATH = BACKEND_DIR / "scraped_articles.json"
 
 
@@ -62,10 +62,21 @@ def main():
     print("=== WeChat Stats Sync ===")
     for key in ("parsed", "matched", "updated", "skipped", "dry_run"):
         print(f"{key}: {result[key]}")
+    if result["ambiguous"]:
+        print("ambiguous:")
+        for item in result["ambiguous"]:
+            print(f"- {item['title']} => {', '.join(item['candidates'])}")
     if result["unmatched"]:
         print("unmatched:")
         for title in result["unmatched"]:
             print(f"- {title}")
+    if result["matches"]:
+        print("matches:")
+        for item in result["matches"]:
+            print(
+                f"- {item['title']} => {item['article_title']} "
+                f"({item['match_type']}, confidence={item['confidence']})"
+            )
 
 
 if __name__ == "__main__":

@@ -146,11 +146,21 @@ export default function AnalyticsPage() {
         `API 获取 ${result.wechat_articles_found} 篇`,
         `更新 ${result.updated} 篇`,
       ]
-      const errors = result.errors || []
-      if (errors.length > 0) {
+      const notices = [
+        ...(result.warnings || []),
+        ...(result.errors || []),
+      ]
+      if ((result.ambiguous || []).length > 0) {
+        notices.push(`有 ${result.ambiguous.length} 条标题歧义，已跳过写入`)
+      }
+      if ((result.unmatched || []).length > 0) {
+        notices.push(`有 ${result.unmatched.length} 条微信数据未匹配到本地文章`)
+      }
+      const errors = notices
+      if (notices.length > 0) {
         messageApi.warning({
           content: `${parts.join('，')}（${errors.join('；')}）`,
-          duration: 6,
+          duration: 8,
           style: {
             marginLeft: 220,
             maxWidth: 'min(720px, calc(100vw - 268px))',

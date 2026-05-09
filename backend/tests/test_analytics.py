@@ -582,6 +582,40 @@ class AnalyticsRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         fetch_real_stats.assert_called_once_with(days_back=365)
 
+    def test_fetch_stats_reports_ambiguous_matches_without_writing_stats(self):
+        db = self.Session()
+        db.add_all([
+            Article(title="alpha beta long", slug="alpha-beta-long", status="draft"),
+            Article(title="alpha beta other", slug="alpha-beta-other", status="draft"),
+        ])
+        db.commit()
+        db.close()
+
+        with (
+            patch("config.Config.WECHAT_APP_ID", "appid"),
+            patch("config.Config.WECHAT_APP_SECRET", "secret"),
+            patch("config.Config.ARTICLES_DIR", "/tmp/missing"),
+            patch("services.article_service.scan_articles_dir", return_value=[]),
+            patch("services.wechat_service.get_published_articles", return_value={}),
+            patch(
+                "services.wechat_service.fetch_real_stats",
+                return_value={"alpha beta": {"int_page_read_count": 8, "share_count": 1}},
+            ),
+        ):
+            response = self.client.post("/api/analytics/fetch-stats")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertEqual(data["updated"], 0)
+        self.assertEqual(data["ambiguous"], [{
+            "title": "alpha beta",
+            "candidates": ["alpha beta long", "alpha beta other"],
+        }])
+        self.assertGreaterEqual(len(data["warnings"]), 1)
+        db = self.Session()
+        self.assertEqual(db.query(ArticleStat).count(), 0)
+        db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

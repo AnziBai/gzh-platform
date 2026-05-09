@@ -1,6 +1,7 @@
 import random
 from datetime import datetime, timezone
 import re
+from pathlib import Path
 
 from flask import Blueprint, request
 from sqlalchemy import func
@@ -230,6 +231,12 @@ def fetch_stats():
 
     db = SessionLocal()
     try:
+        warnings = []
+        if not Path(Config.ARTICLES_DIR).exists():
+            warnings.append(
+                f"文章目录不存在：{Config.ARTICLES_DIR}。本次仍会同步数据库中已有文章，但不会扫描本地新文章。"
+            )
+
         # ── 步骤 1：Upsert 本地文章到数据库 ──
         fs_articles = scan_articles_dir(Config.ARTICLES_DIR)
         db_articles = db.query(Article).all()
@@ -322,6 +329,9 @@ def fetch_stats():
             "matched": sync_result["matched"],
             "skipped": sync_result["skipped"],
             "unmatched": sync_result["unmatched"],
+            "ambiguous": sync_result["ambiguous"],
+            "matches": sync_result["matches"],
+            "warnings": warnings,
             "errors": errors,
         })
     except Exception as e:

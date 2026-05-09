@@ -67,21 +67,44 @@ def normalize_legacy_scraped_stats(items: Iterable[dict]) -> list[dict]:
     return records
 
 
-def _find_article(db_by_title: dict[str, Article], title: str) -> Article | None:
+def _match_article(db_by_title: dict[str, Article], title: str) -> dict:
     key = normalize_title(title)
     if key in db_by_title:
-        return db_by_title[key]
+        return {
+            "article": db_by_title[key],
+            "match_type": "exact",
+            "confidence": 1.0,
+            "ambiguous": [],
+        }
 
-    candidates = []
+    substring_candidates = []
     for db_key, article in db_by_title.items():
         if key and db_key and (key in db_key or db_key in key):
             shorter = min(len(key), len(db_key))
             longer = max(len(key), len(db_key))
-            if longer and shorter / longer >= 0.75:
-                candidates.append(article)
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
+            if longer:
+                substring_candidates.append((article, round(shorter / longer, 2)))
+    if len(substring_candidates) == 1 and substring_candidates[0][1] >= 0.75:
+        article, confidence = substring_candidates[0]
+        return {
+            "article": article,
+            "match_type": "partial",
+            "confidence": confidence,
+            "ambiguous": [],
+        }
+    if len(substring_candidates) > 1:
+        return {
+            "article": None,
+            "match_type": "ambiguous",
+            "confidence": 0.0,
+            "ambiguous": [article.title for article, _confidence in substring_candidates],
+        }
+    return {
+        "article": None,
+        "match_type": "none",
+        "confidence": 0.0,
+        "ambiguous": [],
+    }
 
 
 def _apply_record_to_stat(stat: ArticleStat, record: dict):
@@ -125,6 +148,8 @@ def sync_article_stats(
         matched = 0
         updated = 0
         unmatched = []
+        ambiguous = []
+        matches = []
         skipped = 0
 
         for raw in records or []:
@@ -139,13 +164,27 @@ def sync_article_stats(
                 skipped += 1
                 continue
 
-            article = _find_article(db_by_title, title)
+            match = _match_article(db_by_title, title)
+            article = match["article"]
             if not article:
+                if match["ambiguous"]:
+                    ambiguous.append({
+                        "title": title,
+                        "candidates": match["ambiguous"],
+                    })
+                    continue
                 unmatched.append(title)
                 continue
 
             matched += 1
             updated += 1
+            matches.append({
+                "title": title,
+                "article_id": article.id,
+                "article_title": article.title,
+                "match_type": match["match_type"],
+                "confidence": match["confidence"],
+            })
             if dry_run:
                 continue
 
@@ -172,6 +211,8 @@ def sync_article_stats(
             "updated": updated,
             "skipped": skipped,
             "unmatched": unmatched,
+            "ambiguous": ambiguous,
+            "matches": matches,
             "dry_run": dry_run,
         }
     except Exception:

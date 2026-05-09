@@ -126,10 +126,35 @@ class WechatStatsSyncTest(unittest.TestCase):
 
         self.assertEqual(result["matched"], 0)
         self.assertEqual(result["updated"], 0)
-        self.assertEqual(result["unmatched"], ["alpha beta"])
+        self.assertEqual(result["unmatched"], [])
+        self.assertEqual(result["ambiguous"], [{
+            "title": "alpha beta",
+            "candidates": ["alpha beta long", "alpha beta other"],
+        }])
         db = self.Session()
         self.assertEqual(db.query(ArticleStat).count(), 0)
         db.close()
+
+    def test_sync_reports_match_details_for_exact_and_partial_matches(self):
+        db = self.Session()
+        db.add_all([
+            Article(title="Exact Article", slug="exact-article", status="draft"),
+            Article(title="Long Unique Article", slug="long-unique-article", status="draft"),
+        ])
+        db.commit()
+        db.close()
+
+        result = sync_article_stats([
+            {"title": "Exact Article", "read_count": 10},
+            {"title": "Long Unique Art", "read_count": 8},
+        ], dry_run=True)
+
+        self.assertEqual(result["matched"], 2)
+        self.assertEqual(result["updated"], 2)
+        self.assertEqual(result["matches"], [
+            {"title": "Exact Article", "article_id": 1, "article_title": "Exact Article", "match_type": "exact", "confidence": 1.0},
+            {"title": "Long Unique Art", "article_id": 2, "article_title": "Long Unique Article", "match_type": "partial", "confidence": 0.76},
+        ])
 
 
 if __name__ == "__main__":

@@ -34,6 +34,8 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:3001/settings` first and complete the environment checks.
+The SQLite database is created automatically at `backend/data/gzh_platform.db`
+on first run and is intentionally not committed.
 
 ## Required Settings
 
@@ -105,8 +107,10 @@ The dashboard can fetch official WeChat data through the configured AppID/AppSec
 ```bash
 cd backend
 python scripts/sync_wechat_stats.py --source api
-python scripts/sync_wechat_stats.py --source html --html-path scripts/debug_publish_page.html --dry-run
+python scripts/sync_wechat_stats.py --source html --html-path scripts/publish_records.html --dry-run
 python scripts/sync_wechat_stats.py --source json --json-path scraped_articles.json --dry-run
 ```
 
-Use `--dry-run` first when importing scraped or saved data.
+Use `--dry-run` first when importing scraped or saved data. The script reports
+matched, unmatched, and ambiguous titles; ambiguous titles are skipped instead of
+being written to the database.

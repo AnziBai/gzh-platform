@@ -57,6 +57,21 @@ export interface FetchStatsResult {
   synced: number
   wechat_articles_found: number
   published_on_wechat: number
+  matched: number
+  skipped: number
+  unmatched: string[]
+  ambiguous: Array<{
+    title: string
+    candidates: string[]
+  }>
+  matches: Array<{
+    title: string
+    article_id: number
+    article_title: string
+    match_type: string
+    confidence: number
+  }>
+  warnings: string[]
   errors: string[]
 }
 
