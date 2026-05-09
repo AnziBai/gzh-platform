@@ -1,8 +1,15 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, Form, Input, Select, Space, Spin, Tag, Typography, message } from 'antd'
-import { ApiOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons'
-import { getSettings, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
+import { Alert, Button, Card, Form, Input, List, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import {
+  ApiOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ReloadOutlined,
+  SaveOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons'
+import { getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
 import type { SettingsUpdate } from '../api/settings'
 
 const { Text } = Typography
@@ -27,6 +34,11 @@ export default function SettingsPage() {
     queryFn: getSettings,
   })
 
+  const diagnostics = useQuery({
+    queryKey: ['settings-diagnostics'],
+    queryFn: getSettingsDiagnostics,
+  })
+
   useEffect(() => {
     if (!data) return
     form.setFieldsValue({
@@ -45,6 +57,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       messageApi.success('配置已保存')
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings-diagnostics'] })
     },
     onError: (err: Error) => {
       messageApi.error(`保存失败：${err.message}`)
@@ -119,6 +132,63 @@ export default function SettingsPage() {
           description="密钥字段不会回显，留空表示保留现有密钥。保存后多数配置会即时生效；如果外部进程仍使用旧环境变量，再重启后端。"
           style={{ marginBottom: 16 }}
         />
+
+        <Card
+          size="small"
+          title="部署环境检查"
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          extra={
+            <Space>
+              <Tag color={diagnostics.data?.ok ? 'green' : 'warning'}>
+                {diagnostics.data?.ok ? '全部就绪' : '需要处理'}
+              </Tag>
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={() => diagnostics.refetch()}
+                loading={diagnostics.isFetching}
+              >
+                重新检查
+              </Button>
+            </Space>
+          }
+        >
+          {diagnostics.isLoading ? (
+            <Spin />
+          ) : diagnostics.error ? (
+            <Alert type="error" showIcon message={(diagnostics.error as Error).message} />
+          ) : (
+            <List
+              size="small"
+              dataSource={diagnostics.data?.checks ?? []}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    avatar={
+                      item.ok ? (
+                        <CheckCircleOutlined style={{ color: '#389e0d' }} />
+                      ) : (
+                        <CloseCircleOutlined style={{ color: '#d48806' }} />
+                      )
+                    }
+                    title={
+                      <Space>
+                        <Text>{item.label}</Text>
+                        <Tag color={item.ok ? 'green' : 'warning'}>{item.ok ? 'OK' : '待处理'}</Tag>
+                      </Space>
+                    }
+                    description={
+                      <div>
+                        <div>{item.detail}</div>
+                        {!item.ok && item.action && <Text type="secondary">{item.action}</Text>}
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
 
         <Form form={form} layout="vertical" onFinish={handleFinish}>
           <Card

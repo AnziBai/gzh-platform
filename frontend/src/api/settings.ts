@@ -56,3 +56,20 @@ export async function testWechatSettings(): Promise<ConnectionTestResult> {
   const response = await client.post<ApiResponse<ConnectionTestResult>>('/settings/test-wechat')
   return response.data.data
 }
+
+export interface DiagnosticCheck {
+  ok: boolean
+  label: string
+  detail: string
+  action: string
+}
+
+export interface DiagnosticsResult {
+  ok: boolean
+  checks: DiagnosticCheck[]
+}
+
+export async function getSettingsDiagnostics(): Promise<DiagnosticsResult> {
+  const response = await client.get<ApiResponse<DiagnosticsResult>>('/settings/diagnostics')
+  return response.data.data
+}

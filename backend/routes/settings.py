@@ -63,3 +63,14 @@ def test_wechat_settings():
         return error_response(str(e), 400)
     except Exception as e:
         return error_response(f"微信公众号连接测试失败: {e}", 500)
+
+
+@settings_bp.route("/settings/diagnostics")
+def settings_diagnostics():
+    from config import Config
+    from services.environment_check_service import deployment_diagnostics
+
+    try:
+        return success_response(deployment_diagnostics(Config))
+    except Exception as e:
+        return error_response(f"环境诊断失败: {e}", 500)

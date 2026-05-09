@@ -94,6 +94,18 @@ class SettingsRoutesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_settings_diagnostics_returns_checks(self):
+        with patch(
+            "services.environment_check_service.deployment_diagnostics",
+            return_value={"ok": False, "checks": [{"ok": False, "label": "Git", "detail": "missing", "action": "install"}]},
+        ):
+            response = self.client.get("/api/settings/diagnostics")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertFalse(data["ok"])
+        self.assertEqual(data["checks"][0]["label"], "Git")
+
 
 if __name__ == "__main__":
     unittest.main()
