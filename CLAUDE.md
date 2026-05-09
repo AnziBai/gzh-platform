@@ -23,7 +23,7 @@ gzh-platform/
 ├── backend/
 │   ├── app.py                  ← Flask 入口 + CORS
 │   ├── config.py               ← 从 .env 读环境变量
-│   ├── models.py               ← SQLAlchemy 5 表（articles/benchmarks/topics/tasks/article_stats）
+│   ├── models.py               ← SQLAlchemy 表（articles/article_stats/benchmarks/topics/tasks/sync_status）
 │   ├── database.py             ← SQLite 初始化，DB 在 data/gzh_platform.db
 │   ├── publish_wenyan.mjs      ← 直调 @wenyan-md/core 发布（绕过 claude --print MCP 限制）
 │   ├── routes/                 ← Flask 蓝图（articles/benchmarks/topics/analytics/tasks）
@@ -32,6 +32,8 @@ gzh-platform/
 │   │   ├── publish_service.py  ← 5 步发布流水线（见下方）
 │   │   ├── article_service.py  ← 文章 CRUD + frontmatter 解析
 │   │   ├── wechat_service.py   ← datacube 数据拉取
+│   │   ├── wechat_stats_sync.py← 统计字段归一化、标题匹配、写入 article_stats
+│   │   ├── sync_status_service.py← 记录最近一次数据同步状态
 │   │   ├── scraper_service.py  ← 头条/新浪财经/东方财富/雪球爬虫 + 关键词过滤
 │   │   └── task_manager.py     ← threading + SSE 实时推送
 │   └── .env                    ← 配置文件（不进 git）
@@ -100,6 +102,10 @@ prompt 里只写文件路径不可靠——headless Claude 不一定读文件，
 | `GET /api/tasks/{id}/stream` | SSE 实时日志流 |
 | `GET /api/analytics/overview` | 数据看板总览 |
 | `POST /api/analytics/fetch-stats` | 触发微信数据拉取 |
+| `GET /api/analytics/sync-status` | 最近一次数据看板同步状态 |
+| `GET /api/settings/diagnostics` | 部署环境检查 |
+| `POST /api/settings/test-wechat` | 测试微信公众号连接 |
+| `POST /api/settings/test-ai` | 测试 AI 连接 |
 | `GET /api/benchmarks` | 爆款素材列表 |
 | `POST /api/benchmarks` | 添加素材（支持粘贴全文，标题自动提取） |
 | `DELETE /api/benchmarks/{id}` | 删除素材 |
