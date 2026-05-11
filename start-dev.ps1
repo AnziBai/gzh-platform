@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backend = Join-Path $root "backend"
 $frontend = Join-Path $root "frontend"
-$python = "C:\Users\Administrator\Documents\New\python.exe"
+$python = Join-Path $backend ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $python)) {
   $python = "python"
