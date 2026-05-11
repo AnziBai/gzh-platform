@@ -70,7 +70,7 @@ export default function WorkshopPage() {
       const { task_id } = await generateArticle(topic.trim(), undefined, referenceSlug)
       setTaskId(task_id)
       scrollLogs()
-    } catch (e) {
+    } catch {
       setGenerating(false)
       messageApi.error('启动生成任务失败')
     }

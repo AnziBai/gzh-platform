@@ -8,15 +8,25 @@ interface UseTaskStreamOptions {
 }
 
 export function useTaskStream({ taskId, onComplete, onError }: UseTaskStreamOptions) {
-  const [task, setTask] = useState<Task | null>(null)
-  const [logs, setLogs] = useState<string[]>([])
+  const [streamState, setStreamState] = useState<{
+    taskId: string | null
+    task: Task | null
+    logs: string[]
+  }>({ taskId: null, task: null, logs: [] })
   const esRef = useRef<EventSource | null>(null)
+  const onCompleteRef = useRef(onComplete)
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  }, [onError])
 
   useEffect(() => {
     if (!taskId) return
-
-    setLogs([])
-    setTask(null)
 
     const es = new EventSource(`/api/tasks/${taskId}/stream`)
     esRef.current = es
@@ -24,18 +34,22 @@ export function useTaskStream({ taskId, onComplete, onError }: UseTaskStreamOpti
     es.onmessage = (e) => {
       try {
         const data: Task = JSON.parse(e.data)
-        setTask(data)
-
-        if (data.message) {
-          setLogs((prev) => [...prev, data.message])
-        }
+        setStreamState((prev) => ({
+          taskId,
+          task: data,
+          logs: data.message
+            ? [...(prev.taskId === taskId ? prev.logs : []), data.message]
+            : prev.taskId === taskId
+              ? prev.logs
+              : [],
+        }))
 
         if (data.status === 'completed') {
           es.close()
-          onComplete?.(data)
+          onCompleteRef.current?.(data)
         } else if (data.status === 'failed') {
           es.close()
-          onError?.(data)
+          onErrorRef.current?.(data)
         }
       } catch {
         // ignore parse errors
@@ -52,5 +66,10 @@ export function useTaskStream({ taskId, onComplete, onError }: UseTaskStreamOpti
     }
   }, [taskId])
 
-  return { task, logs }
+  const isCurrentTask = streamState.taskId === taskId
+
+  return {
+    task: isCurrentTask ? streamState.task : null,
+    logs: isCurrentTask ? streamState.logs : [],
+  }
 }
