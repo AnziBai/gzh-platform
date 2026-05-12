@@ -4,10 +4,11 @@ import { Button, Input, Select, Tag, Spin, Alert, Empty, Typography, Progress, P
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined } from '@ant-design/icons'
 import Markdown from 'react-markdown'
 import { getArticles, getArticleBySlug, generateArticle, deleteArticle, getHotReferenceArticles } from '../api/articles'
-import { recommendBenchmarks } from '../api/benchmarks'
+import { getKnowledgeFiles, recommendKnowledge } from '../api/knowledge'
+import type { KnowledgeChunk, RecommendedBenchmark } from '../api/knowledge'
+import { getTopics } from '../api/topics'
 import { useTaskStream } from '../hooks/useTaskStream'
 import type { Article } from '../api/articles'
-import type { Benchmark } from '../api/benchmarks'
 
 const { Title, Text } = Typography
 
@@ -24,8 +25,13 @@ export default function WorkshopPage() {
   const [referenceSlug, setReferenceSlug] = useState<string | undefined>()
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>([])
   const [referenceBenchmarkId, setReferenceBenchmarkId] = useState<number | undefined>()
-  const [recommendedFacts, setRecommendedFacts] = useState<Benchmark[]>([])
-  const [recommendedReferences, setRecommendedReferences] = useState<Benchmark[]>([])
+  const [selectedKnowledgeFileIds, setSelectedKnowledgeFileIds] = useState<number[]>([])
+  const [selectedKnowledgeChunkIds, setSelectedKnowledgeChunkIds] = useState<number[]>([])
+  const [recommendedKnowledgeChunks, setRecommendedKnowledgeChunks] = useState<KnowledgeChunk[]>([])
+  const [selectedTopicId, setSelectedTopicId] = useState<number | undefined>()
+  const [recommendedFacts, setRecommendedFacts] = useState<RecommendedBenchmark[]>([])
+  const [recommendedReferences, setRecommendedReferences] = useState<RecommendedBenchmark[]>([])
+  const [recommending, setRecommending] = useState(false)
   const [taskId, setTaskId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -46,6 +52,19 @@ export default function WorkshopPage() {
     queryKey: ['hot-reference-articles'],
     queryFn: getHotReferenceArticles,
   })
+
+  const { data: knowledgeFiles } = useQuery({
+    queryKey: ['knowledge-files'],
+    queryFn: getKnowledgeFiles,
+  })
+
+  const { data: topics } = useQuery({
+    queryKey: ['topics'],
+    queryFn: () => getTopics(),
+  })
+
+  const selectedTopic = topics?.find((item) => item.id === selectedTopicId)
+  const readyKnowledgeFiles = (knowledgeFiles ?? []).filter((file) => file.status === 'ready')
 
   const { task, logs } = useTaskStream({
     taskId,
@@ -79,6 +98,7 @@ export default function WorkshopPage() {
         referenceBenchmark?.file_path ? referenceBenchmark.file_path.split('/').pop()?.replace(/\.md$/, '') : undefined,
         referenceSlug,
         selectedMaterialIds,
+        selectedKnowledgeChunkIds,
       )
       setTaskId(task_id)
       scrollLogs()
@@ -93,15 +113,28 @@ export default function WorkshopPage() {
       messageApi.warning('请先输入文章主题')
       return
     }
+    setRecommending(true)
     try {
-      const result = await recommendBenchmarks(topic.trim())
+      const result = await recommendKnowledge({
+        topic: topic.trim(),
+        hotspot_title: selectedTopic?.title,
+        knowledge_file_ids: selectedKnowledgeFileIds.length ? selectedKnowledgeFileIds : undefined,
+      })
+      setRecommendedKnowledgeChunks(result.knowledge_chunks)
       setRecommendedFacts(result.fact_materials)
       setRecommendedReferences(result.reference_articles)
+      setSelectedKnowledgeChunkIds(result.knowledge_chunks.slice(0, 5).map((item) => item.id))
       setSelectedMaterialIds(result.fact_materials.filter((item) => item.id != null).slice(0, 3).map((item) => item.id as number))
       setReferenceBenchmarkId(result.reference_articles.find((item) => item.id != null)?.id ?? undefined)
-      messageApi.success('已推荐可用素材')
+      if (result.warnings.length) {
+        messageApi.warning(result.warnings.join('；'))
+      } else {
+        messageApi.success('已推荐可用素材')
+      }
     } catch (err) {
       messageApi.error(`推荐失败：${(err as Error).message}`)
+    } finally {
+      setRecommending(false)
     }
   }
 
@@ -169,6 +202,36 @@ export default function WorkshopPage() {
             />
             <Select
               allowClear
+              showSearch
+              placeholder="可选：热点"
+              value={selectedTopicId}
+              onChange={setSelectedTopicId}
+              disabled={generating}
+              optionFilterProp="label"
+              style={{ width: '100%', marginBottom: 8 }}
+              options={(topics ?? []).map((item) => ({
+                value: item.id,
+                label: item.title,
+              }))}
+            />
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              maxTagCount="responsive"
+              placeholder="可选：知识文件"
+              value={selectedKnowledgeFileIds}
+              onChange={setSelectedKnowledgeFileIds}
+              disabled={generating}
+              optionFilterProp="label"
+              style={{ width: '100%', marginBottom: 8 }}
+              options={readyKnowledgeFiles.map((file) => ({
+                value: file.id,
+                label: file.original_filename || file.filename,
+              }))}
+            />
+            <Select
+              allowClear
               placeholder="可选：仿写一篇爆款文章"
               value={referenceSlug}
               onChange={setReferenceSlug}
@@ -182,34 +245,59 @@ export default function WorkshopPage() {
             <Button
               block
               onClick={handleRecommend}
+              loading={recommending}
               disabled={generating}
               style={{ marginBottom: 8 }}
             >
-              推荐素材
+              智能推荐素材
             </Button>
             <Select
               mode="multiple"
               allowClear
+              showSearch
+              maxTagCount="responsive"
+              placeholder="知识片段"
+              value={selectedKnowledgeChunkIds}
+              onChange={setSelectedKnowledgeChunkIds}
+              disabled={generating}
+              optionFilterProp="label"
+              style={{ width: '100%', marginBottom: 8 }}
+              options={recommendedKnowledgeChunks.map((item) => {
+                const title = item.title || item.content.slice(0, 28)
+                return {
+                  value: item.id,
+                  label: item.reason ? `${title}｜${item.reason}` : title,
+                }
+              })}
+            />
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              maxTagCount="responsive"
               placeholder="事实资料/案例/数据"
               value={selectedMaterialIds}
               onChange={setSelectedMaterialIds}
               disabled={generating}
+              optionFilterProp="label"
               style={{ width: '100%', marginBottom: 8 }}
               options={recommendedFacts.filter((item) => item.id != null).map((item) => ({
                 value: item.id as number,
-                label: item.title,
+                label: item.reason ? `${item.title}｜${item.reason}` : item.title,
               }))}
             />
             <Select
               allowClear
+              showSearch
               placeholder="素材库爆款参考"
               value={referenceBenchmarkId}
               onChange={setReferenceBenchmarkId}
               disabled={generating}
+              optionFilterProp="label"
               style={{ width: '100%', marginBottom: 8 }}
               options={recommendedReferences.filter((item) => item.id != null).map((item) => ({
                 value: item.id as number,
-                label: item.title,
+                label: item.reason ? `${item.title}｜${item.reason}` : item.title,
               }))}
             />
             <Button
