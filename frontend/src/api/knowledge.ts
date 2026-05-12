@@ -1,6 +1,5 @@
 import client from './client'
 import type { ApiResponse } from './client'
-import type { Benchmark } from './benchmarks'
 
 export interface KnowledgeFile {
   id: number
@@ -28,10 +27,21 @@ export interface KnowledgeChunk {
   created_at: string | null
 }
 
+export interface RecommendedBenchmark {
+  id: number | null
+  title: string
+  platform: string
+  source_url: string | null
+  file_path: string | null
+  material_type: 'reference_article' | 'fact_material'
+  reason?: string | null
+  score?: number | null
+}
+
 export interface KnowledgeRecommendation {
   knowledge_chunks: KnowledgeChunk[]
-  fact_materials: Benchmark[]
-  reference_articles: Benchmark[]
+  fact_materials: RecommendedBenchmark[]
+  reference_articles: RecommendedBenchmark[]
   warnings: string[]
 }
 
