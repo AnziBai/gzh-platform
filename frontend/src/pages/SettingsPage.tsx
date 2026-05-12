@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, Form, Input, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Input, Progress, Select, Space, Spin, Tag, Typography, message } from 'antd'
 import {
   ApiOutlined,
   CheckCircleOutlined,
@@ -131,6 +131,17 @@ export default function SettingsPage() {
     return <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
   }
 
+  const setupSteps = diagnostics.data?.setup_steps ?? []
+  const completedSetupSteps = setupSteps.filter((step) => step.ok).length
+  const setupPercent = setupSteps.length ? Math.round((completedSetupSteps / setupSteps.length) * 100) : 0
+  const capabilities = diagnostics.data?.capabilities
+  const capabilityItems = [
+    { key: 'can_generate_articles', label: '生成文章', ok: capabilities?.can_generate_articles },
+    { key: 'can_sync_wechat_data', label: '同步公众号数据', ok: capabilities?.can_sync_wechat_data },
+    { key: 'can_publish_drafts', label: '发布草稿', ok: capabilities?.can_publish_drafts },
+    { key: 'can_archive_outputs', label: '归档记录', ok: capabilities?.can_archive_outputs },
+  ]
+
   return (
     <>
       {contextHolder}
@@ -146,6 +157,61 @@ export default function SettingsPage() {
           description="密钥字段不会回显，留空表示保留现有密钥。保存后多数配置会即时生效；如果外部进程仍使用旧环境变量，再重启后端。"
           style={{ marginBottom: 16 }}
         />
+
+        <Card
+          size="small"
+          title="开箱即用进度"
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          extra={<Tag color={setupPercent === 100 ? 'green' : 'blue'}>{setupPercent}%</Tag>}
+        >
+          {diagnostics.isLoading ? (
+            <Spin />
+          ) : (
+            <Space orientation="vertical" style={{ width: '100%' }} size={12}>
+              <Progress percent={setupPercent} size="small" status={setupPercent === 100 ? 'success' : 'active'} />
+              <Space wrap>
+                {capabilityItems.map((item) => (
+                  <Tag key={item.key} color={item.ok ? 'green' : 'default'}>
+                    {item.label}{item.ok ? '可用' : '未就绪'}
+                  </Tag>
+                ))}
+              </Space>
+              <div>
+                {setupSteps.map((step) => (
+                  <div
+                    key={step.key}
+                    style={{
+                      display: 'flex',
+                      gap: 12,
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f0f0f0',
+                    }}
+                  >
+                    <div style={{ paddingTop: 2 }}>
+                      {step.ok ? (
+                        <CheckCircleOutlined style={{ color: '#389e0d' }} />
+                      ) : (
+                        <CloseCircleOutlined style={{ color: '#d48806' }} />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <Space wrap>
+                        <Text>{step.title}</Text>
+                        <Tag color={step.ok ? 'green' : 'warning'}>{step.ok ? '完成' : '下一步'}</Tag>
+                      </Space>
+                      <div style={{ marginTop: 4 }}>{step.description}</div>
+                      {!step.ok && (
+                        <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                          {step.action}
+                        </Text>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Space>
+          )}
+        </Card>
 
         <Card
           size="small"

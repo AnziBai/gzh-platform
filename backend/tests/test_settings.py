@@ -99,7 +99,12 @@ class SettingsRoutesTest(unittest.TestCase):
     def test_settings_diagnostics_returns_checks(self):
         with patch(
             "services.environment_check_service.deployment_diagnostics",
-            return_value={"ok": False, "checks": [{"ok": False, "label": "Git", "detail": "missing", "action": "install"}]},
+            return_value={
+                "ok": False,
+                "checks": [{"ok": False, "label": "Git", "detail": "missing", "action": "install"}],
+                "setup_steps": [{"key": "local_workspace", "title": "准备本地工作区", "ok": False}],
+                "capabilities": {"can_generate_articles": False},
+            },
         ):
             response = self.client.get("/api/settings/diagnostics")
 
@@ -107,6 +112,8 @@ class SettingsRoutesTest(unittest.TestCase):
         data = response.get_json()["data"]
         self.assertFalse(data["ok"])
         self.assertEqual(data["checks"][0]["label"], "Git")
+        self.assertEqual(data["setup_steps"][0]["key"], "local_workspace")
+        self.assertFalse(data["capabilities"]["can_generate_articles"])
 
     def test_bootstrap_settings_creates_directories_and_returns_diagnostics(self):
         with (

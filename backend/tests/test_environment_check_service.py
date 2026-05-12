@@ -35,6 +35,10 @@ class EnvironmentCheckServiceTest(unittest.TestCase):
         self.assertIn("OpenAI-compatible API", labels)
         self.assertIn("微信公众号凭证", labels)
         self.assertIn("Wenyan 排版依赖", labels)
+        self.assertIn("setup_steps", result)
+        self.assertIn("capabilities", result)
+        self.assertTrue(result["capabilities"]["can_generate_articles"])
+        self.assertTrue(result["capabilities"]["can_publish_drafts"])
         self.assertTrue(result["ok"])
 
     def test_deployment_diagnostics_flags_missing_openai_config(self):
@@ -51,6 +55,9 @@ class EnvironmentCheckServiceTest(unittest.TestCase):
         api_check = next(check for check in result["checks"] if check["label"] == "OpenAI-compatible API")
         self.assertFalse(api_check["ok"])
         self.assertIn("AI_API_KEY", api_check["detail"])
+        ai_step = next(step for step in result["setup_steps"] if step["key"] == "ai_writer")
+        self.assertFalse(ai_step["ok"])
+        self.assertFalse(result["capabilities"]["can_generate_articles"])
 
 
 if __name__ == "__main__":

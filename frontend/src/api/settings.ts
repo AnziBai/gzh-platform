@@ -74,6 +74,19 @@ export interface DiagnosticCheck {
 export interface DiagnosticsResult {
   ok: boolean
   checks: DiagnosticCheck[]
+  setup_steps?: Array<{
+    key: string
+    title: string
+    ok: boolean
+    description: string
+    action: string
+  }>
+  capabilities?: {
+    can_generate_articles: boolean
+    can_sync_wechat_data: boolean
+    can_publish_drafts: boolean
+    can_archive_outputs: boolean
+  }
 }
 
 export async function getSettingsDiagnostics(): Promise<DiagnosticsResult> {

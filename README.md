@@ -3,41 +3,21 @@
 公众号内容运营平台，包含文章生成、发布中心、选题库和数据看板。
 
 中文同事首次部署请先看：[中文快速部署指南](docs/中文快速部署指南.md)。
-想用脚本自动创建目录、安装依赖并生成 `.env`，看：[自动初始化配置示例](docs/自动初始化配置示例.md)。
+现在推荐直接运行 `.\start-dev.ps1`：脚本会创建后端虚拟环境、安装前后端依赖并启动服务。打开设置页后，用“首次部署向导”和“开箱即用进度”补齐目录、AI 和公众号配置。
+想了解脚本背后的目录和 `.env` 示例，看：[自动初始化配置示例](docs/自动初始化配置示例.md)。
 维护和二次开发请看：[架构说明](docs/架构说明.md) 与 [运维手册](docs/运维手册.md)。
 
 ## Quick Start
 
-1. Install dependencies.
+1. Start services and install missing dependencies.
 
-```bash
-cd backend
-pip install -r requirements.txt
-
-cd ../frontend
-npm install
+```powershell
+.\start-dev.ps1
 ```
 
-2. Create backend config.
+2. Open settings.
 
-```bash
-cd backend
-copy .env.example .env
-```
-
-3. Start services.
-
-```bash
-# terminal 1
-cd backend
-python app.py
-
-# terminal 2
-cd frontend
-npm run dev
-```
-
-Open `http://127.0.0.1:3001/settings` first and complete the environment checks.
+Open `http://127.0.0.1:3001/settings` first. Click **首次部署向导**, then follow **开箱即用进度** until the capabilities you need are ready.
 The SQLite database is created automatically at `backend/data/gzh_platform.db`
 on first run and is intentionally not committed.
 
