@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Input, Select, Tag, Spin, Alert, Empty, Typography, Progress, Popconfirm, message } from 'antd'
+import { Button, Grid, Input, Select, Tag, Spin, Alert, Empty, Typography, Progress, Popconfirm, message } from 'antd'
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined } from '@ant-design/icons'
 import Markdown from 'react-markdown'
 import { getArticles, getArticleBySlug, generateArticle, deleteArticle, getHotReferenceArticles } from '../api/articles'
@@ -11,6 +11,7 @@ import { useTaskStream } from '../hooks/useTaskStream'
 import type { Article } from '../api/articles'
 
 const { Title, Text } = Typography
+const { useBreakpoint } = Grid
 
 const statusConfig: Record<string, { color: string; label: string }> = {
   draft: { color: 'default', label: '草稿' },
@@ -20,6 +21,8 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 
 export default function WorkshopPage() {
   const queryClient = useQueryClient()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
   const [referenceSlug, setReferenceSlug] = useState<string | undefined>()
@@ -169,11 +172,18 @@ export default function WorkshopPage() {
   return (
     <>
       {contextHolder}
-      <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 48px)' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 16,
+          height: isMobile ? 'auto' : 'calc(100vh - 48px)',
+        }}
+      >
         {/* 左侧：文章列表 + 生成面板 */}
         <div
           style={{
-            width: 300,
+            width: isMobile ? '100%' : 300,
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
@@ -449,7 +459,8 @@ export default function WorkshopPage() {
             borderRadius: 8,
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
             overflow: 'auto',
-            padding: 32,
+            padding: isMobile ? 18 : 32,
+            minHeight: isMobile ? 420 : undefined,
           }}
         >
           {!selectedSlug ? (
