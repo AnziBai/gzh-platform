@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
   Table,
@@ -14,15 +14,24 @@ import {
   Empty,
   Typography,
   message,
+  Upload,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, FileTextOutlined, UploadOutlined } from '@ant-design/icons'
 import { getBenchmarks, createBenchmark, deleteBenchmark, updateBenchmark } from '../api/benchmarks'
+import { getKnowledgeFiles, uploadKnowledgeFile, deleteKnowledgeFile } from '../api/knowledge'
 import { approveMaterialCandidate, getMaterialCandidates, rejectMaterialCandidate } from '../api/materials'
 import type { Benchmark } from '../api/benchmarks'
+import type { KnowledgeFile } from '../api/knowledge'
 import type { MaterialCandidate } from '../api/materials'
 import type { ColumnsType } from 'antd/es/table'
+import type { UploadProps } from 'antd'
 
 const { Text } = Typography
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message
+  return 'Unknown error'
+}
 
 const platformColors: Record<string, string> = {
   manual: 'default',
@@ -70,6 +79,33 @@ export default function BenchmarksPage() {
   const { data: candidates } = useQuery({
     queryKey: ['material-candidates', 'candidate'],
     queryFn: () => getMaterialCandidates('candidate'),
+  })
+
+  const { data: knowledgeFiles, isLoading: knowledgeLoading } = useQuery({
+    queryKey: ['knowledge-files'],
+    queryFn: getKnowledgeFiles,
+  })
+
+  const uploadKnowledgeMutation = useMutation({
+    mutationFn: uploadKnowledgeFile,
+    onSuccess: () => {
+      messageApi.success('Knowledge file uploaded')
+      queryClient.invalidateQueries({ queryKey: ['knowledge-files'] })
+    },
+    onError: (e) => {
+      messageApi.error(`Upload failed: ${getErrorMessage(e)}`)
+    },
+  })
+
+  const deleteKnowledgeMutation = useMutation({
+    mutationFn: deleteKnowledgeFile,
+    onSuccess: () => {
+      messageApi.success('Knowledge file deleted')
+      queryClient.invalidateQueries({ queryKey: ['knowledge-files'] })
+    },
+    onError: (e) => {
+      messageApi.error(`Delete failed: ${getErrorMessage(e)}`)
+    },
   })
 
   const handleAdd = async (values: FormValues) => {
@@ -163,6 +199,113 @@ export default function BenchmarksPage() {
       messageApi.error(`忽略失败：${(e as Error).message}`)
     }
   }
+
+  const handleKnowledgeUpload: UploadProps['beforeUpload'] = (file) => {
+    uploadKnowledgeMutation.mutate(file)
+    return false
+  }
+
+  const getKnowledgeStatusColor = (status: KnowledgeFile['status']) => {
+    if (status === 'ready') return 'green'
+    if (status === 'processing') return 'blue'
+    return 'red'
+  }
+
+  const knowledgeColumns: ColumnsType<KnowledgeFile> = [
+    {
+      title: 'File',
+      dataIndex: 'original_filename',
+      key: 'original_filename',
+      ellipsis: true,
+      render: (filename: string, record) => (
+        <div>
+          <Text style={{ fontSize: 13 }}>{filename || record.filename}</Text>
+          {filename && filename !== record.filename && (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+              {record.filename}
+            </Text>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Type',
+      dataIndex: 'file_type',
+      key: 'file_type',
+      width: 90,
+      render: (fileType: string) => <Tag>{fileType.toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (status: KnowledgeFile['status']) => (
+        <Tag color={getKnowledgeStatusColor(status)}>{status}</Tag>
+      ),
+    },
+    {
+      title: 'Chunks',
+      dataIndex: 'chunk_count',
+      key: 'chunk_count',
+      width: 90,
+      render: (count: number) => <Text style={{ fontSize: 13 }}>{count}</Text>,
+    },
+    {
+      title: 'Error',
+      dataIndex: 'error_message',
+      key: 'error_message',
+      ellipsis: true,
+      render: (errorMessage: string | null) =>
+        errorMessage ? (
+          <Text type="danger" style={{ fontSize: 12 }}>{errorMessage}</Text>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>-</Text>
+        ),
+    },
+    {
+      title: 'Uploaded',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      render: (val: string | null) =>
+        val ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {new Date(val).toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>-</Text>
+        ),
+    },
+    {
+      title: 'Action',
+      key: 'action',
+      width: 90,
+      render: (_: unknown, record) => (
+        <Popconfirm
+          title="Delete this knowledge file?"
+          okText="Delete"
+          cancelText="Cancel"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => deleteKnowledgeMutation.mutate(record.id)}
+        >
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            size="small"
+            loading={deleteKnowledgeMutation.isPending}
+          />
+        </Popconfirm>
+      ),
+    },
+  ]
 
   const candidateColumns: ColumnsType<MaterialCandidate> = [
     {
@@ -376,6 +519,61 @@ export default function BenchmarksPage() {
           />
         </div>
       )}
+
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 8,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 16,
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <Text strong style={{ fontSize: 15 }}>Knowledge Base</Text>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+              Upload internal knowledge for AI writing. These files are not viral reference articles.
+            </Text>
+          </div>
+          <Upload
+            accept=".md,.txt,.pdf"
+            showUploadList={false}
+            beforeUpload={handleKnowledgeUpload}
+          >
+            <Button
+              icon={<UploadOutlined />}
+              loading={uploadKnowledgeMutation.isPending}
+            >
+              Upload .md/.txt/.pdf
+            </Button>
+          </Upload>
+        </div>
+        <Table<KnowledgeFile>
+          dataSource={knowledgeFiles ?? []}
+          columns={knowledgeColumns}
+          rowKey="id"
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          size="small"
+          loading={knowledgeLoading}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="No knowledge files uploaded"
+              />
+            ),
+          }}
+        />
+      </div>
 
       <div
         style={{
