@@ -189,7 +189,6 @@ export default function TopicsPage() {
     setSelectedKnowledgeFileIds(fileIds)
     if (!briefTopic) return
 
-    const existingKnowledgeChunkIds = briefTopic.knowledge_chunk_ids ?? []
     setKnowledgeRecommending(true)
     try {
       const recommendation = await recommendKnowledge({
@@ -199,12 +198,12 @@ export default function TopicsPage() {
       })
       const chunks = recommendation.knowledge_chunks ?? []
       setRecommendedKnowledgeChunks(chunks)
-      if (!(existingKnowledgeChunkIds.length > 0 && knowledgeSelectionTouched)) {
+      if (!knowledgeSelectionTouched) {
         setSelectedKnowledgeChunkIds(chunks.slice(0, 5).map((chunk) => chunk.id))
       }
     } catch {
       setRecommendedKnowledgeChunks([])
-      if (!(existingKnowledgeChunkIds.length > 0 && knowledgeSelectionTouched)) {
+      if (!knowledgeSelectionTouched) {
         setSelectedKnowledgeChunkIds([])
       }
     } finally {
