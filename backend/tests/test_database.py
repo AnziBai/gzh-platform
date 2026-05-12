@@ -40,6 +40,24 @@ class DatabaseInitTest(unittest.TestCase):
         self.assertIn("reference_article_slug", columns)
         self.assertIn("generated_article_id", columns)
 
+    def test_init_db_creates_knowledge_tables_and_topic_column(self):
+        database.init_db()
+
+        with database.engine.connect() as conn:
+            tables = {
+                row[0]
+                for row in conn.exec_driver_sql(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            self.assertIn("knowledge_files", tables)
+            self.assertIn("knowledge_chunks", tables)
+
+            topic_columns = {
+                row[1] for row in conn.exec_driver_sql("PRAGMA table_info(topics)")
+            }
+            self.assertIn("knowledge_chunk_ids_json", topic_columns)
+
 
 if __name__ == "__main__":
     unittest.main()

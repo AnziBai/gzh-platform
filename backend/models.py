@@ -101,6 +101,34 @@ class MaterialCandidate(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class KnowledgeFile(Base):
+    __tablename__ = "knowledge_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    original_filename = Column(String, nullable=False)
+    file_type = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="processing")
+    chunk_count = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(Integer, ForeignKey("knowledge_files.id"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    title = Column(String)
+    content = Column(Text, nullable=False)
+    content_hash = Column(String, nullable=False, index=True)
+    keywords_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Topic(Base):
     __tablename__ = "topics"
 
@@ -115,6 +143,7 @@ class Topic(Base):
     status = Column(String, default="new")  # new | selected | used | dismissed
     brief_json = Column(Text)
     material_ids_json = Column(Text)
+    knowledge_chunk_ids_json = Column(Text)
     reference_article_slug = Column(String)
     generated_article_id = Column(Integer, ForeignKey("articles.id"), nullable=True)
 

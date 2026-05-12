@@ -14,7 +14,17 @@ class Base(DeclarativeBase):
 
 
 def init_db():
-    from models import Article, ArticleStat, Benchmark, MaterialCandidate, Topic, Task, SyncStatus  # noqa: F401
+    from models import (  # noqa: F401
+        Article,
+        ArticleStat,
+        Benchmark,
+        KnowledgeChunk,
+        KnowledgeFile,
+        MaterialCandidate,
+        SyncStatus,
+        Task,
+        Topic,
+    )
     os.makedirs(os.path.dirname(Config.DB_PATH), exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_article_stats_columns()
@@ -57,6 +67,7 @@ def _ensure_topic_workflow_columns():
         {
             "brief_json": "TEXT",
             "material_ids_json": "TEXT",
+            "knowledge_chunk_ids_json": "TEXT",
             "reference_article_slug": "VARCHAR",
             "generated_article_id": "INTEGER",
         },
