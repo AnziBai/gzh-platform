@@ -103,18 +103,13 @@ def generate_topic_article(topic_id):
 
 def _serialize(t: Topic) -> dict:
     material_ids = []
-    knowledge_chunk_ids = []
+    knowledge_chunk_ids = _load_list_json(t.knowledge_chunk_ids_json)
     brief = None
     if t.material_ids_json:
         try:
             material_ids = json.loads(t.material_ids_json)
         except json.JSONDecodeError:
             material_ids = []
-    if t.knowledge_chunk_ids_json:
-        try:
-            knowledge_chunk_ids = json.loads(t.knowledge_chunk_ids_json)
-        except json.JSONDecodeError:
-            knowledge_chunk_ids = []
     if t.brief_json:
         try:
             brief = json.loads(t.brief_json)
@@ -137,3 +132,13 @@ def _serialize(t: Topic) -> dict:
         "discovered_at": t.discovered_at.isoformat() if t.discovered_at else None,
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
+
+
+def _load_list_json(raw) -> list:
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return decoded if isinstance(decoded, list) else []

@@ -13,7 +13,8 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
 from models import KnowledgeChunk, KnowledgeFile, Topic
-from services.topic_workflow_service import run_generate_brief, run_generate_from_topic
+from routes.topics import _serialize
+from services.topic_workflow_service import _normalize_ids, run_generate_brief, run_generate_from_topic
 
 
 class DummyBriefClient:
@@ -51,6 +52,12 @@ class TopicWorkflowKnowledgeTest(unittest.TestCase):
 
     def tearDown(self):
         self.session_patch.stop()
+
+    def test_normalize_ids_rejects_non_collection_values(self):
+        self.assertEqual(_normalize_ids("12345"), [])
+        self.assertEqual(_normalize_ids({"1": True}), [])
+        self.assertEqual(_normalize_ids(123), [])
+        self.assertEqual(_normalize_ids([3, "2", 3, "bad", 1]), [3, 2, 1])
 
     def _create_topic_with_chunk(self):
         db = self.Session()
@@ -122,6 +129,41 @@ class TopicWorkflowKnowledgeTest(unittest.TestCase):
         self.assertIn("Knowledge base snippets", captured["context_hint"])
         self.assertIn("Knowledge chunk content for topic workflow.", captured["context_hint"])
         self.assertIn("user-provided context", captured["context_hint"])
+
+    def test_generate_from_topic_ignores_malformed_saved_knowledge_chunk_ids(self):
+        topic_id, _chunk_id = self._create_topic_with_chunk()
+        db = self.Session()
+        topic = db.query(Topic).filter(Topic.id == topic_id).first()
+        topic.brief_json = json.dumps({"recommended_title": "Generated from brief"})
+        topic.material_ids_json = "[]"
+        topic.knowledge_chunk_ids_json = '"12345"'
+        topic.status = "selected"
+        db.commit()
+        db.close()
+
+        captured = {}
+
+        def fake_run_generate(task_id, topic, benchmark_slug=None, reference_article_slug=None, context_hint=None):
+            captured["context_hint"] = context_hint
+            return {"file_path": "C:/articles/generated.md", "slug": "generated"}
+
+        with (
+            patch("services.topic_workflow_service.run_generate", side_effect=fake_run_generate),
+            patch(
+                "services.topic_workflow_service.parse_frontmatter",
+                return_value={"frontmatter": {"title": "Generated Article"}, "content": "Article body"},
+            ),
+        ):
+            run_generate_from_topic("task-generate", topic_id)
+
+        self.assertIn("No knowledge base snippets selected.", captured["context_hint"])
+        self.assertNotIn("Knowledge chunk content for topic workflow.", captured["context_hint"])
+
+    def test_topic_serializer_returns_empty_knowledge_chunk_ids_for_non_list_json(self):
+        topic = Topic(title="Hot topic", platform="toutiao", hot_value=88)
+        topic.knowledge_chunk_ids_json = '"123"'
+
+        self.assertEqual(_serialize(topic)["knowledge_chunk_ids"], [])
 
 
 if __name__ == "__main__":

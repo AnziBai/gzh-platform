@@ -86,8 +86,8 @@ def run_generate_from_topic(task_id: str, topic_id: int):
             raise RuntimeError("Please generate and confirm the topic brief first")
 
         brief = json.loads(topic.brief_json)
-        material_ids = _normalize_ids(json.loads(topic.material_ids_json or "[]"))
-        knowledge_chunk_ids = _normalize_ids(json.loads(topic.knowledge_chunk_ids_json or "[]"))[:MAX_KNOWLEDGE_CHUNKS]
+        material_ids = _load_ids_json(topic.material_ids_json)
+        knowledge_chunk_ids = _load_ids_json(topic.knowledge_chunk_ids_json)[:MAX_KNOWLEDGE_CHUNKS]
         materials = _load_materials(db, material_ids)
         knowledge_chunks = _load_knowledge_chunks(db, knowledge_chunk_ids)
         context_hint = _build_article_context_hint(topic, brief, materials, knowledge_chunks)
@@ -118,7 +118,7 @@ def run_generate_from_topic(task_id: str, topic_id: int):
 
 
 def _normalize_ids(ids) -> list[int]:
-    if not ids:
+    if not ids or not isinstance(ids, (list, tuple, set)):
         return []
     result = []
     seen = set()
@@ -132,6 +132,14 @@ def _normalize_ids(ids) -> list[int]:
         result.append(normalized)
         seen.add(normalized)
     return result
+
+
+def _load_ids_json(raw) -> list[int]:
+    try:
+        decoded = json.loads(raw or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return _normalize_ids(decoded)
 
 
 def _load_materials(db, material_ids: list[int]) -> list[dict]:
