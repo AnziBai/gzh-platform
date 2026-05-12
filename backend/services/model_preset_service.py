@@ -37,7 +37,7 @@ MODEL_PRESETS = [
         "name": "智谱 GLM",
         "provider": "openai_compatible",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "recommended_models": ["glm-4.6", "glm-4-plus"],
+        "recommended_models": ["glm-4-flash", "glm-4.6", "glm-4-plus"],
         "description": "适合中文写作和结构化任务，thinking 参数可通过 extra body 透传。",
         "extra_body_example": {},
         "key_env_names": ["ZHIPU_API_KEY", "GLM_API_KEY", "BIGMODEL_API_KEY"],
@@ -70,7 +70,7 @@ MODEL_PRESETS = [
         "recommended_models": ["mimo-v2-pro", "mimo-v2-flash", "mimo-v2-omni"],
         "description": "小米 MiMo 的 OpenAI 兼容接口，适合长上下文、推理和智能体类任务。",
         "extra_body_example": {"max_completion_tokens": 4096},
-        "key_env_names": ["MIMO_API_KEY", "XIAOMI_API_KEY", "XIAOMI_MIMO_API_KEY"],
+        "key_env_names": ["MIMO_API_KEY", "XIAOMI_API_KEY", "XIAOMI_MIMO_API_KEY", "XIAOMI_TOKENPLAN_API_KEY"],
     },
     {
         "key": "custom",

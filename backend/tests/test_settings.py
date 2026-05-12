@@ -137,6 +137,8 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertEqual(presets["openai"]["base_url"], "https://api.openai.com/v1")
         self.assertEqual(presets["mimo"]["base_url"], "https://api.mimo-v2.com/v1")
         self.assertIn("mimo-v2-pro", presets["mimo"]["recommended_models"])
+        self.assertIn("XIAOMI_TOKENPLAN_API_KEY", presets["mimo"]["key_env_names"])
+        self.assertIn("glm-4-flash", presets["zhipu"]["recommended_models"])
 
     def test_credential_discovery_masks_env_key(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-1234567890"}, clear=False):
@@ -168,6 +170,18 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertEqual(updates["AI_MODEL"], "gpt-4.1-mini")
         self.assertEqual(updates["AI_API_KEY"], "sk-test-setup")
         self.assertTrue(response.get_json()["data"]["used_discovered_key"])
+
+    def test_discovery_does_not_reuse_generic_key_for_other_presets(self):
+        with (
+            patch.dict("os.environ", {"AI_API_KEY": "glm-current-key"}, clear=True),
+            patch("config.Config.AI_PRESET_PROVIDER", "zhipu"),
+        ):
+            response = self.client.get("/api/settings/credential-discovery")
+
+        self.assertEqual(response.status_code, 200)
+        providers = {item["key"]: item for item in response.get_json()["data"]["providers"]}
+        self.assertFalse(providers["openai"]["has_key"])
+        self.assertTrue(providers["zhipu"]["has_key"])
 
 
 if __name__ == "__main__":

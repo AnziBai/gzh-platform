@@ -111,8 +111,9 @@ def update_env_file(env_path: str, updates: dict[str, str]) -> None:
 def discover_credentials(config) -> dict:
     env_values = _read_env_file(config.ENV_PATH)
     providers = []
+    active_preset = getattr(config, "AI_PRESET_PROVIDER", "") or env_values.get("AI_PRESET_PROVIDER", "")
     for preset in model_presets():
-        key_info = _find_provider_key(preset, env_values)
+        key_info = _find_provider_key(preset, env_values, active_preset)
         providers.append({
             "key": preset["key"],
             "name": preset["name"],
@@ -139,7 +140,8 @@ def setup_wizard(config, body: dict) -> dict:
 
     env_values = _read_env_file(config.ENV_PATH)
     explicit_key = (body.get("api_key") or "").strip()
-    discovered = _find_provider_key(preset, env_values)
+    active_preset = getattr(config, "AI_PRESET_PROVIDER", "") or env_values.get("AI_PRESET_PROVIDER", "")
+    discovered = _find_provider_key(preset, env_values, active_preset)
     api_key = explicit_key or (discovered["value"] if discovered else "")
     if not api_key:
         raise RuntimeError("没有发现 API Key，请手动填写后再保存")
@@ -226,14 +228,16 @@ def _read_env_file(env_path: str) -> dict[str, str]:
     return values
 
 
-def _find_provider_key(preset: dict, env_values: dict[str, str]) -> dict | None:
+def _find_provider_key(preset: dict, env_values: dict[str, str], active_preset: str | None = None) -> dict | None:
     names = list(preset.get("key_env_names") or [])
-    if preset.get("key") != "custom":
-        names.append("AI_API_KEY")
-    else:
+    if preset.get("key") == "custom":
         names = ["AI_API_KEY"]
+    elif preset.get("key") == active_preset and "AI_API_KEY" not in names:
+        names.append("AI_API_KEY")
 
     for name in names:
+        if name == "AI_API_KEY" and preset.get("key") not in {"custom", active_preset}:
+            continue
         value = os.getenv(name) or env_values.get(name)
         if value:
             source = "environment" if os.getenv(name) else "backend/.env"
