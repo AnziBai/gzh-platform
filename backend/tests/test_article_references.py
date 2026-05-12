@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
-from models import Article, ArticleStat
+from models import Article, ArticleStat, KnowledgeChunk, KnowledgeFile
 from routes.articles import articles_bp
 
 
@@ -90,6 +90,59 @@ class ArticleReferencesTest(unittest.TestCase):
         self.assertEqual(args[2], "New Topic")
         self.assertIsNone(args[3])
         self.assertEqual(args[4], "hot-local")
+
+    def test_generate_article_appends_selected_knowledge_chunks_to_context_hint(self):
+        db = self.Session()
+        file = KnowledgeFile(
+            filename="alpha.md",
+            original_filename="alpha.md",
+            file_type="md",
+            file_path="alpha.md",
+            status="ready",
+            chunk_count=1,
+        )
+        db.add(file)
+        db.flush()
+        chunk = KnowledgeChunk(
+            file_id=file.id,
+            chunk_index=0,
+            title="Risk Control",
+            content="Position sizing and drawdown rules from the internal playbook.",
+            content_hash="hash-risk",
+            keywords_json='["risk","control"]',
+        )
+        db.add(chunk)
+        db.commit()
+        chunk_id = chunk.id
+        db.close()
+
+        with (
+            patch("services.task_manager.task_manager.create_task", return_value="task-2"),
+            patch("services.task_manager.task_manager.run") as run_task,
+        ):
+            response = self.client.post(
+                "/api/articles/generate",
+                json={"topic": "Risk Topic", "knowledge_chunk_ids": [chunk_id]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        context_hint = run_task.call_args.args[5]
+        self.assertIn("Knowledge base snippets", context_hint)
+        self.assertIn("Position sizing and drawdown rules", context_hint)
+        self.assertIn("Source: alpha.md", context_hint)
+
+    def test_generate_article_ignores_invalid_knowledge_chunk_ids(self):
+        with (
+            patch("services.task_manager.task_manager.create_task", return_value="task-3"),
+            patch("services.task_manager.task_manager.run") as run_task,
+        ):
+            response = self.client.post(
+                "/api/articles/generate",
+                json={"topic": "Risk Topic", "knowledge_chunk_ids": "not-a-list"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(run_task.call_args.args[5], "")
 
 
 if __name__ == "__main__":

@@ -135,7 +135,16 @@ def generate_article():
     benchmark_slug = body.get("benchmark_slug")
     reference_article_slug = body.get("reference_article_slug")
     material_ids = body.get("material_ids") or []
-    context_hint = _build_material_context(material_ids)
+    knowledge_chunk_ids = body.get("knowledge_chunk_ids") or []
+    context_parts = [
+        part
+        for part in [
+            _build_material_context(material_ids),
+            _build_knowledge_context(knowledge_chunk_ids),
+        ]
+        if part
+    ]
+    context_hint = "\n\n".join(context_parts)
 
     task_id = task_manager.create_task("generate", meta={"topic": topic})
     task_manager.run(task_id, run_generate, topic, benchmark_slug, reference_article_slug, context_hint)
@@ -212,6 +221,43 @@ def _build_material_context(material_ids) -> str:
         if not parts:
             return ""
         return "\n\n## Fact materials for citation\n\n" + "\n\n".join(parts)
+    finally:
+        db.close()
+
+
+def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
+    if not isinstance(knowledge_chunk_ids, list) or not knowledge_chunk_ids:
+        return ""
+    ids = [int(item) for item in knowledge_chunk_ids if str(item).isdigit()]
+    if not ids:
+        return ""
+
+    from models import KnowledgeChunk, KnowledgeFile
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(KnowledgeChunk, KnowledgeFile)
+            .join(KnowledgeFile, KnowledgeFile.id == KnowledgeChunk.file_id)
+            .filter(KnowledgeChunk.id.in_(ids))
+            .all()
+        )
+        by_id = {chunk.id: (chunk, file) for chunk, file in rows}
+        parts = []
+        for chunk_id in ids:
+            row = by_id.get(chunk_id)
+            if not row:
+                continue
+            chunk, file = row
+            content = (chunk.content or "").strip()
+            if not content:
+                continue
+            title = chunk.title or file.original_filename or file.filename or f"Knowledge chunk {chunk.id}"
+            source = file.original_filename or file.filename or file.file_path or "knowledge base"
+            parts.append(f"### {title}\nSource: {source}\n\n{content[:3000]}")
+        if not parts:
+            return ""
+        return "\n\n## Knowledge base snippets\n\n" + "\n\n".join(parts)
     finally:
         db.close()
 
