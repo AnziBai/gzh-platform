@@ -153,7 +153,7 @@ export default function SettingsPage() {
           style={{ marginBottom: 16, borderRadius: 8 }}
           extra={<Tag color="blue">只配置目录，不安装依赖</Tag>}
         >
-          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Space orientation="vertical" style={{ width: '100%' }} size={12}>
             <Text type="secondary">
               一键创建文章、素材、资源和数据库目录，并写入 backend/.env。公众号密钥、AI Key 和 IP 白名单仍需要你按诊断提示填写。
             </Text>
