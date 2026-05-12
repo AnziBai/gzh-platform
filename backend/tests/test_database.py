@@ -16,15 +16,17 @@ class DatabaseInitTest(unittest.TestCase):
         tmp_root = BACKEND_DIR / "tests" / ".tmp"
         tmp_root.mkdir(exist_ok=True)
         db_path = tmp_root / f"db-init-{uuid.uuid4().hex}" / "missing" / "gzh_platform.db"
+        test_engine = create_engine("sqlite:///:memory:")
 
         with (
             patch("database.Config.DB_PATH", str(db_path)),
+            patch("database.engine", test_engine),
             patch("database.Base.metadata.create_all") as create_all,
         ):
             database.init_db()
 
         self.assertTrue(db_path.parent.is_dir())
-        create_all.assert_called_once_with(bind=database.engine)
+        create_all.assert_called_once_with(bind=test_engine)
 
     def test_ensure_columns_backfills_existing_sqlite_tables(self):
         engine = create_engine("sqlite:///:memory:")
