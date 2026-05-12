@@ -8,8 +8,10 @@ import { FireOutlined, CheckOutlined, StopOutlined, FileTextOutlined } from '@an
 import { getTopics, scrapeTopics, selectTopic, dismissTopic, generateTopicArticle, generateTopicBrief } from '../api/topics'
 import { getBenchmarks } from '../api/benchmarks'
 import { getHotReferenceArticles } from '../api/articles'
+import { getKnowledgeFiles, recommendKnowledge } from '../api/knowledge'
 import { useTaskStream } from '../hooks/useTaskStream'
 import type { Topic } from '../api/topics'
+import type { KnowledgeChunk } from '../api/knowledge'
 
 const { Title, Text } = Typography
 
@@ -47,6 +49,11 @@ export default function TopicsPage() {
   const [briefTopic, setBriefTopic] = useState<Topic | null>(null)
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>([])
   const [selectedReferenceSlug, setSelectedReferenceSlug] = useState<string | null>(null)
+  const [selectedKnowledgeFileIds, setSelectedKnowledgeFileIds] = useState<number[]>([])
+  const [selectedKnowledgeChunkIds, setSelectedKnowledgeChunkIds] = useState<number[]>([])
+  const [recommendedKnowledgeChunks, setRecommendedKnowledgeChunks] = useState<KnowledgeChunk[]>([])
+  const [knowledgeRecommending, setKnowledgeRecommending] = useState(false)
+  const [knowledgeSelectionTouched, setKnowledgeSelectionTouched] = useState(false)
   const [sourceGroup, setSourceGroup] = useState<'finance' | 'aihot' | 'all'>('finance')
   const [scrapeMode, setScrapeMode] = useState<'selected' | 'all'>('selected')
   const [sinceHours, setSinceHours] = useState(24)
@@ -68,6 +75,11 @@ export default function TopicsPage() {
   const { data: hotReferences } = useQuery({
     queryKey: ['hot-reference-articles'],
     queryFn: getHotReferenceArticles,
+  })
+
+  const { data: knowledgeFiles } = useQuery({
+    queryKey: ['knowledge-files'],
+    queryFn: getKnowledgeFiles,
   })
 
   const { task, logs } = useTaskStream({
@@ -148,10 +160,56 @@ export default function TopicsPage() {
     }
   }
 
-  const openBriefModal = (topic: Topic) => {
+  const openBriefModal = async (topic: Topic) => {
+    const existingKnowledgeChunkIds = topic.knowledge_chunk_ids ?? []
     setBriefTopic(topic)
     setSelectedMaterialIds(topic.material_ids ?? [])
     setSelectedReferenceSlug(topic.reference_article_slug ?? null)
+    setSelectedKnowledgeFileIds([])
+    setSelectedKnowledgeChunkIds(existingKnowledgeChunkIds)
+    setRecommendedKnowledgeChunks([])
+    setKnowledgeSelectionTouched(false)
+
+    setKnowledgeRecommending(true)
+    try {
+      const recommendation = await recommendKnowledge({ topic: topic.title, hotspot_title: topic.title })
+      const chunks = recommendation.knowledge_chunks ?? []
+      setRecommendedKnowledgeChunks(chunks)
+      if (existingKnowledgeChunkIds.length === 0) {
+        setSelectedKnowledgeChunkIds(chunks.slice(0, 5).map((chunk) => chunk.id))
+      }
+    } catch {
+      setRecommendedKnowledgeChunks([])
+    } finally {
+      setKnowledgeRecommending(false)
+    }
+  }
+
+  const handleKnowledgeFileChange = async (fileIds: number[]) => {
+    setSelectedKnowledgeFileIds(fileIds)
+    if (!briefTopic) return
+
+    const existingKnowledgeChunkIds = briefTopic.knowledge_chunk_ids ?? []
+    setKnowledgeRecommending(true)
+    try {
+      const recommendation = await recommendKnowledge({
+        topic: briefTopic.title,
+        hotspot_title: briefTopic.title,
+        knowledge_file_ids: fileIds.length > 0 ? fileIds : undefined,
+      })
+      const chunks = recommendation.knowledge_chunks ?? []
+      setRecommendedKnowledgeChunks(chunks)
+      if (!(existingKnowledgeChunkIds.length > 0 && knowledgeSelectionTouched)) {
+        setSelectedKnowledgeChunkIds(chunks.slice(0, 5).map((chunk) => chunk.id))
+      }
+    } catch {
+      setRecommendedKnowledgeChunks([])
+      if (!(existingKnowledgeChunkIds.length > 0 && knowledgeSelectionTouched)) {
+        setSelectedKnowledgeChunkIds([])
+      }
+    } finally {
+      setKnowledgeRecommending(false)
+    }
   }
 
   const handleGenerateBrief = async () => {
@@ -161,6 +219,7 @@ export default function TopicsPage() {
       const { task_id } = await generateTopicBrief(briefTopic.id, {
         material_ids: selectedMaterialIds,
         reference_article_slug: selectedReferenceSlug,
+        knowledge_chunk_ids: selectedKnowledgeChunkIds,
       })
       setWorkflowTaskId(task_id)
     } catch {
@@ -301,6 +360,24 @@ export default function TopicsPage() {
     { key: 'new',       label: '待处理' },
     { key: 'selected',  label: '已选' },
     { key: 'dismissed', label: '已忽略' },
+  ]
+
+  const readyKnowledgeFiles = (knowledgeFiles ?? []).filter((file) => file.status === 'ready')
+  const selectedMissingKnowledgeChunkOptions = selectedKnowledgeChunkIds
+    .filter((id) => !recommendedKnowledgeChunks.some((chunk) => chunk.id === id))
+    .map((id) => ({
+      value: id,
+      label: `Knowledge #${id}`,
+    }))
+  const knowledgeChunkOptions = [
+    ...recommendedKnowledgeChunks.map((chunk) => {
+      const title = chunk.title || chunk.content.slice(0, 48)
+      return {
+        value: chunk.id,
+        label: chunk.reason ? `${title} - ${chunk.reason}` : title,
+      }
+    }),
+    ...selectedMissingKnowledgeChunkOptions,
   ]
 
   const isStreaming = scraping && taskId !== null && task?.status !== 'completed' && task?.status !== 'failed'
@@ -537,6 +614,32 @@ export default function TopicsPage() {
 
             <Select
               mode="multiple"
+              allowClear
+              placeholder="Knowledge files (optional scope)"
+              value={selectedKnowledgeFileIds}
+              onChange={handleKnowledgeFileChange}
+              options={readyKnowledgeFiles.map((file) => ({
+                value: file.id,
+                label: `${file.original_filename} (${file.chunk_count})`,
+              }))}
+            />
+
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Knowledge snippets"
+              loading={knowledgeRecommending}
+              value={selectedKnowledgeChunkIds}
+              onChange={(ids) => {
+                setKnowledgeSelectionTouched(true)
+                setSelectedKnowledgeChunkIds(ids)
+              }}
+              options={knowledgeChunkOptions}
+            />
+
+            <Select
+              mode="multiple"
+              allowClear
               placeholder="选择事实资料/案例/数据"
               value={selectedMaterialIds}
               onChange={setSelectedMaterialIds}
