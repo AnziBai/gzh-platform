@@ -20,6 +20,7 @@ def create_app():
     from routes.tasks import tasks_bp
     from routes.settings import settings_bp
     from routes.materials import materials_bp
+    from routes.knowledge import knowledge_bp
 
     app.register_blueprint(articles_bp, url_prefix="/api")
     app.register_blueprint(topics_bp, url_prefix="/api")
@@ -28,6 +29,7 @@ def create_app():
     app.register_blueprint(tasks_bp, url_prefix="/api")
     app.register_blueprint(settings_bp, url_prefix="/api")
     app.register_blueprint(materials_bp, url_prefix="/api")
+    app.register_blueprint(knowledge_bp, url_prefix="/api")
 
     @app.route("/api/health")
     def health():

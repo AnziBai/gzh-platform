@@ -212,6 +212,17 @@ def delete_file(db, file_id: int) -> bool:
     return True
 
 
+def recommend_for_topic(
+    db,
+    topic: str,
+    hotspot_title: str | None = None,
+    knowledge_file_ids: list[int] | None = None,
+    limit: int = 5,
+    config=None,
+) -> dict:
+    return {"knowledge_chunks": [], "fact_materials": [], "reference_articles": [], "warnings": []}
+
+
 def _normalize_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     return re.sub(r"\n{3,}", "\n\n", text).strip()
