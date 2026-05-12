@@ -131,6 +131,63 @@ class ArticleReferencesTest(unittest.TestCase):
         self.assertIn("Position sizing and drawdown rules", context_hint)
         self.assertIn("Source: alpha.md", context_hint)
 
+    def test_generate_article_limits_and_deduplicates_knowledge_chunks(self):
+        db = self.Session()
+        file = KnowledgeFile(
+            filename="limits.md",
+            original_filename="limits.md",
+            file_type="md",
+            file_path="limits.md",
+            status="ready",
+            chunk_count=7,
+        )
+        db.add(file)
+        db.flush()
+        chunks = []
+        for index in range(7):
+            chunk = KnowledgeChunk(
+                file_id=file.id,
+                chunk_index=index,
+                title=f"Limit Chunk {index}",
+                content=f"Unique content {index}",
+                content_hash=f"hash-limit-{index}",
+                keywords_json="[]",
+            )
+            chunks.append(chunk)
+        db.add_all(chunks)
+        db.commit()
+        chunk_ids = [chunk.id for chunk in chunks]
+        db.close()
+
+        with (
+            patch("services.task_manager.task_manager.create_task", return_value="task-4"),
+            patch("services.task_manager.task_manager.run") as run_task,
+        ):
+            response = self.client.post(
+                "/api/articles/generate",
+                json={
+                    "topic": "Limit Topic",
+                    "knowledge_chunk_ids": [
+                        chunk_ids[0],
+                        chunk_ids[1],
+                        chunk_ids[1],
+                        chunk_ids[2],
+                        chunk_ids[3],
+                        chunk_ids[4],
+                        chunk_ids[5],
+                        chunk_ids[6],
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        context_hint = run_task.call_args.args[5]
+        self.assertEqual(context_hint.count("### Limit Chunk"), 5)
+        self.assertEqual(context_hint.count("Unique content 1"), 1)
+        self.assertIn("Unique content 4", context_hint)
+        self.assertNotIn("Unique content 5", context_hint)
+        self.assertNotIn("Unique content 6", context_hint)
+
     def test_generate_article_ignores_invalid_knowledge_chunk_ids(self):
         with (
             patch("services.task_manager.task_manager.create_task", return_value="task-3"),

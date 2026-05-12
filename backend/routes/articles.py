@@ -225,10 +225,26 @@ def _build_material_context(material_ids) -> str:
         db.close()
 
 
+MAX_KNOWLEDGE_CHUNKS = 5
+MAX_KNOWLEDGE_CONTEXT_CHARS = 8000
+MAX_KNOWLEDGE_CHUNK_CHARS = 3000
+
+
 def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
     if not isinstance(knowledge_chunk_ids, list) or not knowledge_chunk_ids:
         return ""
-    ids = [int(item) for item in knowledge_chunk_ids if str(item).isdigit()]
+    ids = []
+    seen_ids = set()
+    for item in knowledge_chunk_ids:
+        if not str(item).isdigit():
+            continue
+        chunk_id = int(item)
+        if chunk_id in seen_ids:
+            continue
+        ids.append(chunk_id)
+        seen_ids.add(chunk_id)
+        if len(ids) >= MAX_KNOWLEDGE_CHUNKS:
+            break
     if not ids:
         return ""
 
@@ -244,6 +260,7 @@ def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
         )
         by_id = {chunk.id: (chunk, file) for chunk, file in rows}
         parts = []
+        remaining_chars = MAX_KNOWLEDGE_CONTEXT_CHARS
         for chunk_id in ids:
             row = by_id.get(chunk_id)
             if not row:
@@ -252,9 +269,13 @@ def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
             content = (chunk.content or "").strip()
             if not content:
                 continue
+            if remaining_chars <= 0:
+                break
             title = chunk.title or file.original_filename or file.filename or f"Knowledge chunk {chunk.id}"
             source = file.original_filename or file.filename or file.file_path or "knowledge base"
-            parts.append(f"### {title}\nSource: {source}\n\n{content[:3000]}")
+            snippet = content[: min(MAX_KNOWLEDGE_CHUNK_CHARS, remaining_chars)]
+            parts.append(f"### {title}\nSource: {source}\n\n{snippet}")
+            remaining_chars -= len(snippet)
         if not parts:
             return ""
         return "\n\n## Knowledge base snippets\n\n" + "\n\n".join(parts)
