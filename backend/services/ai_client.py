@@ -143,12 +143,16 @@ class OpenAICompatibleClient:
             url = f"{url}/chat/completions"
 
         try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            if "mimo" in self.base_url.lower() or "xiaomi" in self.base_url.lower():
+                headers["api-key"] = self.api_key
+
             response = requests.post(
                 url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json={
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],

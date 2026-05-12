@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+
+from services.model_preset_service import find_model_preset, model_presets
 
 
 ALLOWED_ENV_KEYS = {
@@ -105,6 +108,74 @@ def update_env_file(env_path: str, updates: dict[str, str]) -> None:
     path.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
 
 
+def discover_credentials(config) -> dict:
+    env_values = _read_env_file(config.ENV_PATH)
+    providers = []
+    for preset in model_presets():
+        key_info = _find_provider_key(preset, env_values)
+        providers.append({
+            "key": preset["key"],
+            "name": preset["name"],
+            "base_url": preset["base_url"],
+            "model": preset["recommended_models"][0] if preset["recommended_models"] else "",
+            "provider": preset["provider"],
+            "key_env_names": preset.get("key_env_names", []),
+            "has_key": bool(key_info),
+            "key_source": key_info["source"] if key_info else None,
+            "key_name": key_info["name"] if key_info else None,
+            "key_preview": _mask_secret(key_info["value"]) if key_info else None,
+        })
+    return {
+        "providers": providers,
+        "current": settings_payload(config)["ai_writer"],
+    }
+
+
+def setup_wizard(config, body: dict) -> dict:
+    preset_key = (body.get("preset_provider") or "").strip()
+    preset = find_model_preset(preset_key)
+    if not preset:
+        raise RuntimeError("请选择有效的模型预设")
+
+    env_values = _read_env_file(config.ENV_PATH)
+    explicit_key = (body.get("api_key") or "").strip()
+    discovered = _find_provider_key(preset, env_values)
+    api_key = explicit_key or (discovered["value"] if discovered else "")
+    if not api_key:
+        raise RuntimeError("没有发现 API Key，请手动填写后再保存")
+
+    base_url = (body.get("base_url") or preset.get("base_url") or "").strip()
+    model = (body.get("model") or (preset.get("recommended_models") or [""])[0]).strip()
+    if not base_url or not model:
+        raise RuntimeError("Base URL 和 Model 不能为空")
+
+    extra_body_json = body.get("extra_body_json")
+    if extra_body_json is None:
+        extra_body_json = ""
+
+    updates = {
+        "AI_PROVIDER": preset["provider"],
+        "AI_PRESET_PROVIDER": preset["key"],
+        "AI_BASE_URL": base_url,
+        "AI_MODEL": model,
+        "AI_API_KEY": api_key,
+        "AI_EXTRA_BODY_JSON": str(extra_body_json).strip(),
+    }
+    update_env_file(config.ENV_PATH, updates)
+    for key, value in updates.items():
+        setattr(config, key, value)
+
+    return {
+        "saved": {
+            key: (_mask_secret(value) if key == "AI_API_KEY" else value)
+            for key, value in updates.items()
+        },
+        "used_discovered_key": bool(discovered and not explicit_key),
+        "key_source": discovered["source"] if discovered and not explicit_key else "manual",
+        "settings": settings_payload(config),
+    }
+
+
 def bootstrap_directories(config, root_dir: str | None = None) -> dict:
     root = Path(root_dir or config.GZHPUBLISHER_ROOT).expanduser()
     articles_dir = root / "articles" / "published"
@@ -139,3 +210,39 @@ def bootstrap_directories(config, root_dir: str | None = None) -> dict:
 
 def _normalize_path(path: Path) -> str:
     return str(path.resolve()).replace("\\", "/")
+
+
+def _read_env_file(env_path: str) -> dict[str, str]:
+    path = Path(env_path)
+    if not path.exists():
+        return {}
+    values = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _find_provider_key(preset: dict, env_values: dict[str, str]) -> dict | None:
+    names = list(preset.get("key_env_names") or [])
+    if preset.get("key") != "custom":
+        names.append("AI_API_KEY")
+    else:
+        names = ["AI_API_KEY"]
+
+    for name in names:
+        value = os.getenv(name) or env_values.get(name)
+        if value:
+            source = "environment" if os.getenv(name) else "backend/.env"
+            return {"name": name, "value": value, "source": source}
+    return None
+
+
+def _mask_secret(value: str) -> str:
+    value = value or ""
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:6]}...{value[-4:]}"

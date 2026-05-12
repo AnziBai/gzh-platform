@@ -16,6 +16,11 @@ class DummyConfig:
     AI_MODEL = "writer-model"
     CLAUDE_BIN = ""
     GZHPUBLISHER_ROOT = "."
+    AI_EXTRA_BODY_JSON = ""
+
+
+class MimoConfig(DummyConfig):
+    AI_BASE_URL = "https://api.mimo-v2.com/v1"
 
 
 class AIClientTest(unittest.TestCase):
@@ -37,6 +42,20 @@ class AIClientTest(unittest.TestCase):
         self.assertEqual(result.provider, "openai_compatible")
         self.assertEqual(result.model, "writer-model")
         self.assertEqual(post.call_args.args[0], "https://api.example.com/v1/chat/completions")
+
+    def test_mimo_request_includes_api_key_header(self):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "hello"}}],
+        }
+
+        with patch("requests.post", return_value=response) as post:
+            OpenAICompatibleClient(MimoConfig).generate_text("prompt")
+
+        headers = post.call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer sk-test")
+        self.assertEqual(headers["api-key"], "sk-test")
 
     def test_openai_compatible_reports_auth_failure(self):
         response = Mock()

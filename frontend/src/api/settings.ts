@@ -129,9 +129,56 @@ export interface ModelPreset {
   recommended_models: string[]
   description: string
   extra_body_example?: Record<string, unknown>
+  key_env_names?: string[]
 }
 
 export async function getModelPresets(): Promise<ModelPreset[]> {
   const response = await client.get<ApiResponse<ModelPreset[]>>('/settings/model-presets')
+  return response.data.data
+}
+
+export interface DiscoveredCredential {
+  key: string
+  name: string
+  provider: string
+  base_url: string
+  model: string
+  key_env_names: string[]
+  has_key: boolean
+  key_source: string | null
+  key_name: string | null
+  key_preview: string | null
+}
+
+export interface CredentialDiscovery {
+  providers: DiscoveredCredential[]
+  current: Settings['ai_writer']
+}
+
+export async function getCredentialDiscovery(): Promise<CredentialDiscovery> {
+  const response = await client.get<ApiResponse<CredentialDiscovery>>('/settings/credential-discovery')
+  return response.data.data
+}
+
+export async function runSetupWizard(data: {
+  preset_provider: string
+  base_url?: string
+  model?: string
+  api_key?: string
+  extra_body_json?: string
+}): Promise<{
+  saved: Record<string, string>
+  used_discovered_key: boolean
+  key_source: string
+  settings: Settings
+  diagnostics: DiagnosticsResult
+}> {
+  const response = await client.post<ApiResponse<{
+    saved: Record<string, string>
+    used_discovered_key: boolean
+    key_source: string
+    settings: Settings
+    diagnostics: DiagnosticsResult
+  }>>('/settings/setup-wizard', data)
   return response.data.data
 }

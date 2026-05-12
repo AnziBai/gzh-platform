@@ -20,6 +20,29 @@ def get_settings():
     return success_response(settings_payload(Config))
 
 
+@settings_bp.route("/settings/credential-discovery")
+def credential_discovery():
+    from config import Config
+    from services.settings_service import discover_credentials
+
+    return success_response(discover_credentials(Config))
+
+
+@settings_bp.route("/settings/setup-wizard", methods=["POST"])
+def setup_wizard():
+    from config import Config
+    from services.environment_check_service import deployment_diagnostics
+    from services.settings_service import setup_wizard as run_setup_wizard
+
+    body = request.get_json(silent=True) or {}
+    try:
+        result = run_setup_wizard(Config, body)
+        result["diagnostics"] = deployment_diagnostics(Config)
+        return success_response(result)
+    except Exception as e:
+        return error_response(f"配置向导失败: {e}", 400)
+
+
 @settings_bp.route("/settings", methods=["PUT"])
 def update_settings():
     from config import Config

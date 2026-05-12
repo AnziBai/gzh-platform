@@ -129,6 +129,46 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertEqual(data["created"]["ARTICLES_DIR"], "C:/content/articles/published")
         self.assertTrue(data["diagnostics"]["ok"])
 
+    def test_model_presets_include_openai_and_mimo(self):
+        response = self.client.get("/api/settings/model-presets")
+
+        self.assertEqual(response.status_code, 200)
+        presets = {item["key"]: item for item in response.get_json()["data"]}
+        self.assertEqual(presets["openai"]["base_url"], "https://api.openai.com/v1")
+        self.assertEqual(presets["mimo"]["base_url"], "https://api.mimo-v2.com/v1")
+        self.assertIn("mimo-v2-pro", presets["mimo"]["recommended_models"])
+
+    def test_credential_discovery_masks_env_key(self):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-1234567890"}, clear=False):
+            response = self.client.get("/api/settings/credential-discovery")
+
+        self.assertEqual(response.status_code, 200)
+        openai = next(item for item in response.get_json()["data"]["providers"] if item["key"] == "openai")
+        self.assertTrue(openai["has_key"])
+        self.assertEqual(openai["key_name"], "OPENAI_API_KEY")
+        self.assertNotIn("1234567890", str(openai))
+
+    def test_setup_wizard_uses_discovered_key_and_writes_env(self):
+        with (
+            patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test-setup"}, clear=False),
+            patch("config.Config.ENV_PATH", "backend/.env"),
+            patch("services.settings_service.update_env_file") as update_env_file,
+            patch("services.environment_check_service.deployment_diagnostics", return_value={"ok": True, "checks": []}),
+        ):
+            response = self.client.post(
+                "/api/settings/setup-wizard",
+                json={"preset_provider": "openai", "model": "gpt-4.1-mini"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        _, updates = update_env_file.call_args.args
+        self.assertEqual(updates["AI_PROVIDER"], "openai_compatible")
+        self.assertEqual(updates["AI_PRESET_PROVIDER"], "openai")
+        self.assertEqual(updates["AI_BASE_URL"], "https://api.openai.com/v1")
+        self.assertEqual(updates["AI_MODEL"], "gpt-4.1-mini")
+        self.assertEqual(updates["AI_API_KEY"], "sk-test-setup")
+        self.assertTrue(response.get_json()["data"]["used_discovered_key"])
+
 
 if __name__ == "__main__":
     unittest.main()

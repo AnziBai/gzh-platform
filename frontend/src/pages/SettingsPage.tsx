@@ -1,6 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Card, Form, Input, Progress, Select, Space, Spin, Tag, Typography, message } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Progress,
+  Radio,
+  Select,
+  Space,
+  Spin,
+  Steps,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
 import {
   ApiOutlined,
   CheckCircleOutlined,
@@ -10,8 +26,18 @@ import {
   SaveOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { bootstrapSettings, getModelPresets, getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
-import type { SettingsUpdate } from '../api/settings'
+import {
+  bootstrapSettings,
+  getCredentialDiscovery,
+  getModelPresets,
+  getSettings,
+  getSettingsDiagnostics,
+  runSetupWizard,
+  testAiSettings,
+  testWechatSettings,
+  updateSettings,
+} from '../api/settings'
+import type { DiscoveredCredential, SettingsUpdate } from '../api/settings'
 
 const { Text } = Typography
 
@@ -33,25 +59,37 @@ interface SettingsFormValues {
 export default function SettingsPage() {
   const [form] = Form.useForm<SettingsFormValues>()
   const [messageApi, contextHolder] = message.useMessage()
-  const [bootstrapRoot, setBootstrapRoot] = useState('')
   const queryClient = useQueryClient()
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['settings'],
-    queryFn: getSettings,
+  const [bootstrapRoot, setBootstrapRoot] = useState('')
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState(0)
+  const [wizardPreset, setWizardPreset] = useState('openai')
+  const [wizardApiKey, setWizardApiKey] = useState('')
+  const [wizardBaseUrl, setWizardBaseUrl] = useState('')
+  const [wizardModel, setWizardModel] = useState('')
+  const [wizardExtraBody, setWizardExtraBody] = useState('')
+
+  const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const diagnostics = useQuery({ queryKey: ['settings-diagnostics'], queryFn: getSettingsDiagnostics })
+  const presets = useQuery({ queryKey: ['model-presets'], queryFn: getModelPresets })
+  const discovery = useQuery({
+    queryKey: ['credential-discovery'],
+    queryFn: getCredentialDiscovery,
+    enabled: wizardOpen,
   })
 
-  const diagnostics = useQuery({
-    queryKey: ['settings-diagnostics'],
-    queryFn: getSettingsDiagnostics,
-  })
-
-  const { data: modelPresets } = useQuery({
-    queryKey: ['model-presets'],
-    queryFn: getModelPresets,
-  })
+  const selectedPreset = useMemo(
+    () => presets.data?.find((item) => item.key === wizardPreset),
+    [presets.data, wizardPreset],
+  )
+  const selectedCredential = useMemo<DiscoveredCredential | undefined>(
+    () => discovery.data?.providers.find((item) => item.key === wizardPreset),
+    [discovery.data, wizardPreset],
+  )
 
   useEffect(() => {
+    const data = settings.data
     if (!data) return
     form.setFieldsValue({
       wechat_app_id: data.wechat.app_id,
@@ -67,57 +105,102 @@ export default function SettingsPage() {
       search_base_url: data.search.base_url,
       search_api_key: '',
     })
-  }, [data, form])
+  }, [settings.data, form])
+
+  const invalidateSettings = () => {
+    queryClient.invalidateQueries({ queryKey: ['settings'] })
+    queryClient.invalidateQueries({ queryKey: ['settings-diagnostics'] })
+    queryClient.invalidateQueries({ queryKey: ['credential-discovery'] })
+  }
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
     onSuccess: () => {
       messageApi.success('配置已保存')
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['settings-diagnostics'] })
+      invalidateSettings()
     },
-    onError: (err: Error) => {
-      messageApi.error(`保存失败：${err.message}`)
-    },
+    onError: (err: Error) => messageApi.error(`保存失败：${err.message}`),
   })
 
   const aiTestMutation = useMutation({
     mutationFn: testAiSettings,
-    onSuccess: (result) => {
-      messageApi.success(result.message || 'AI 连接正常')
-    },
-    onError: (err: Error) => {
-      messageApi.error(`AI 连接失败：${err.message}`)
-    },
+    onSuccess: (result) => messageApi.success(result.message || 'AI 连接正常'),
+    onError: (err: Error) => messageApi.error(`AI 连接失败：${err.message}`),
   })
 
   const wechatTestMutation = useMutation({
     mutationFn: testWechatSettings,
-    onSuccess: (result) => {
-      messageApi.success(result.message || '微信公众号连接正常')
-    },
-    onError: (err: Error) => {
-      messageApi.error(`微信公众号连接失败：${err.message}`)
-    },
+    onSuccess: (result) => messageApi.success(result.message || '微信公众号连接正常'),
+    onError: (err: Error) => messageApi.error(`微信公众号连接失败：${err.message}`),
   })
 
   const bootstrapMutation = useMutation({
     mutationFn: () => bootstrapSettings(bootstrapRoot || undefined),
     onSuccess: () => {
-      messageApi.success('首次部署目录已创建，目录配置已写入 .env')
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
-      queryClient.invalidateQueries({ queryKey: ['settings-diagnostics'] })
+      messageApi.success('目录配置已写入 .env')
+      invalidateSettings()
     },
-    onError: (err: Error) => {
-      messageApi.error(`首次部署向导失败：${err.message}`)
-    },
+    onError: (err: Error) => messageApi.error(`首次部署向导失败：${err.message}`),
   })
+
+  const setupWizardMutation = useMutation({
+    mutationFn: () => runSetupWizard({
+      preset_provider: wizardPreset,
+      base_url: wizardBaseUrl,
+      model: wizardModel,
+      api_key: wizardApiKey.trim() || undefined,
+      extra_body_json: wizardExtraBody,
+    }),
+    onSuccess: (result) => {
+      messageApi.success(result.used_discovered_key ? '已使用本机已有 Key 完成配置' : '配置向导已完成')
+      form.setFieldsValue({
+        ai_provider: result.settings.ai_writer.provider,
+        ai_preset_provider: result.settings.ai_writer.preset_provider,
+        ai_base_url: result.settings.ai_writer.base_url,
+        ai_model: result.settings.ai_writer.model,
+        ai_extra_body_json: result.settings.ai_writer.extra_body_json,
+        ai_api_key: '',
+      })
+      setWizardOpen(false)
+      setWizardStep(0)
+      setWizardApiKey('')
+      invalidateSettings()
+    },
+    onError: (err: Error) => messageApi.error(err.message),
+  })
+
+  const applyPreset = (presetKey?: string) => {
+    const preset = presets.data?.find((item) => item.key === presetKey)
+    if (!preset) return
+    form.setFieldsValue({
+      ai_provider: preset.provider,
+      ai_preset_provider: preset.key,
+      ai_base_url: preset.base_url,
+      ai_model: preset.recommended_models[0],
+      ai_extra_body_json: preset.extra_body_example ? JSON.stringify(preset.extra_body_example, null, 2) : '',
+    })
+  }
+
+  const applyWizardPreset = (presetKey: string) => {
+    setWizardPreset(presetKey)
+    const preset = presets.data?.find((item) => item.key === presetKey)
+    if (!preset) return
+    setWizardBaseUrl(preset.base_url)
+    setWizardModel(preset.recommended_models[0] ?? '')
+    setWizardExtraBody(preset.extra_body_example ? JSON.stringify(preset.extra_body_example, null, 2) : '')
+  }
+
+  const openWizard = () => {
+    applyWizardPreset(wizardPreset)
+    setWizardOpen(true)
+    setWizardStep(0)
+    setWizardApiKey('')
+    discovery.refetch()
+  }
 
   const handleFinish = (values: SettingsFormValues) => {
     const payload: SettingsUpdate = {
-      wechat: {
-        app_id: values.wechat_app_id,
-      },
+      wechat: { app_id: values.wechat_app_id },
       ai_writer: {
         provider: values.ai_provider,
         base_url: values.ai_base_url,
@@ -131,31 +214,13 @@ export default function SettingsPage() {
         base_url: values.search_base_url,
       },
     }
-    if (values.wechat_app_secret?.trim()) {
-      payload.wechat!.app_secret = values.wechat_app_secret.trim()
-    }
-    if (values.ai_api_key?.trim()) {
-      payload.ai_writer!.api_key = values.ai_api_key.trim()
-    }
-    if (values.search_api_key?.trim()) {
-      payload.search!.api_key = values.search_api_key.trim()
-    }
+    if (values.wechat_app_secret?.trim()) payload.wechat!.app_secret = values.wechat_app_secret.trim()
+    if (values.ai_api_key?.trim()) payload.ai_writer!.api_key = values.ai_api_key.trim()
+    if (values.search_api_key?.trim()) payload.search!.api_key = values.search_api_key.trim()
     saveMutation.mutate(payload)
   }
 
-  const applyPreset = (presetKey?: string) => {
-    const preset = modelPresets?.find((item) => item.key === presetKey)
-    if (!preset) return
-    form.setFieldsValue({
-      ai_provider: preset.provider,
-      ai_preset_provider: preset.key,
-      ai_base_url: preset.base_url,
-      ai_model: preset.recommended_models[0],
-      ai_extra_body_json: preset.extra_body_example ? JSON.stringify(preset.extra_body_example, null, 2) : '',
-    })
-  }
-
-  if (isLoading) {
+  if (settings.isLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
         <Spin size="large" />
@@ -163,10 +228,11 @@ export default function SettingsPage() {
     )
   }
 
-  if (error) {
-    return <Alert type="error" title="加载失败" description={(error as Error).message} showIcon />
+  if (settings.error) {
+    return <Alert type="error" title="加载失败" description={(settings.error as Error).message} showIcon />
   }
 
+  const data = settings.data
   const setupSteps = diagnostics.data?.setup_steps ?? []
   const completedSetupSteps = setupSteps.filter((step) => step.ok).length
   const setupPercent = setupSteps.length ? Math.round((completedSetupSteps / setupSteps.length) * 100) : 0
@@ -177,29 +243,28 @@ export default function SettingsPage() {
     { key: 'can_publish_drafts', label: '发布草稿', ok: capabilities?.can_publish_drafts },
     { key: 'can_archive_outputs', label: '归档记录', ok: capabilities?.can_archive_outputs },
   ]
+  const wizardCanFinish = Boolean(wizardPreset && wizardBaseUrl && wizardModel && (selectedCredential?.has_key || wizardApiKey.trim()))
 
   return (
     <>
       {contextHolder}
       <div style={{ maxWidth: 920 }}>
-        <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 16 }}>
-          设置
-        </Text>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text strong style={{ fontSize: 15 }}>设置</Text>
+          <Button type="primary" icon={<ThunderboltOutlined />} onClick={openWizard}>
+            配置向导
+          </Button>
+        </div>
 
         <Alert
           type="info"
           showIcon
           title="配置只保存在当前电脑的 backend/.env"
-          description="密钥字段不会回显，留空表示保留现有密钥。保存后多数配置会即时生效；如果外部进程仍使用旧环境变量，再重启后端。"
+          description="密钥字段不会回显，留空表示保留现有密钥。"
           style={{ marginBottom: 16 }}
         />
 
-        <Card
-          size="small"
-          title="开箱即用进度"
-          style={{ marginBottom: 16, borderRadius: 8 }}
-          extra={<Tag color={setupPercent === 100 ? 'green' : 'blue'}>{setupPercent}%</Tag>}
-        >
+        <Card size="small" title="开箱即用进度" style={{ marginBottom: 16, borderRadius: 8 }} extra={<Tag color={setupPercent === 100 ? 'green' : 'blue'}>{setupPercent}%</Tag>}>
           {diagnostics.isLoading ? (
             <Spin />
           ) : (
@@ -214,21 +279,9 @@ export default function SettingsPage() {
               </Space>
               <div>
                 {setupSteps.map((step) => (
-                  <div
-                    key={step.key}
-                    style={{
-                      display: 'flex',
-                      gap: 12,
-                      padding: '10px 0',
-                      borderBottom: '1px solid #f0f0f0',
-                    }}
-                  >
+                  <div key={step.key} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid #f0f0f0' }}>
                     <div style={{ paddingTop: 2 }}>
-                      {step.ok ? (
-                        <CheckCircleOutlined style={{ color: '#389e0d' }} />
-                      ) : (
-                        <CloseCircleOutlined style={{ color: '#d48806' }} />
-                      )}
+                      {step.ok ? <CheckCircleOutlined style={{ color: '#389e0d' }} /> : <CloseCircleOutlined style={{ color: '#d48806' }} />}
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <Space wrap>
@@ -236,11 +289,7 @@ export default function SettingsPage() {
                         <Tag color={step.ok ? 'green' : 'warning'}>{step.ok ? '完成' : '下一步'}</Tag>
                       </Space>
                       <div style={{ marginTop: 4 }}>{step.description}</div>
-                      {!step.ok && (
-                        <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-                          {step.action}
-                        </Text>
-                      )}
+                      {!step.ok && step.action && <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>{step.action}</Text>}
                     </div>
                   </div>
                 ))}
@@ -249,27 +298,10 @@ export default function SettingsPage() {
           )}
         </Card>
 
-        <Card
-          size="small"
-          title="首次部署向导"
-          style={{ marginBottom: 16, borderRadius: 8 }}
-          extra={<Tag color="blue">只配置目录，不安装依赖</Tag>}
-        >
+        <Card size="small" title="首次部署向导" style={{ marginBottom: 16, borderRadius: 8 }} extra={<Tag color="blue">目录配置</Tag>}>
           <Space orientation="vertical" style={{ width: '100%' }} size={12}>
-            <Text type="secondary">
-              一键创建文章、素材、资源和数据库目录，并写入 backend/.env。公众号密钥、AI Key 和 IP 白名单仍需要你按诊断提示填写。
-            </Text>
-            <Input
-              value={bootstrapRoot}
-              onChange={(event) => setBootstrapRoot(event.target.value)}
-              placeholder={data?.directories.gzhpublisher_root || '例如 C:/gzh-content'}
-            />
-            <Button
-              type="primary"
-              icon={<FolderAddOutlined />}
-              loading={bootstrapMutation.isPending}
-              onClick={() => bootstrapMutation.mutate()}
-            >
+            <Input value={bootstrapRoot} onChange={(event) => setBootstrapRoot(event.target.value)} placeholder={data?.directories.gzhpublisher_root || '例如 C:/gzh-content'} />
+            <Button type="primary" icon={<FolderAddOutlined />} loading={bootstrapMutation.isPending} onClick={() => bootstrapMutation.mutate()}>
               创建目录并写入 .env
             </Button>
           </Space>
@@ -281,17 +313,8 @@ export default function SettingsPage() {
           style={{ marginBottom: 16, borderRadius: 8 }}
           extra={
             <Space>
-              <Tag color={diagnostics.data?.ok ? 'green' : 'warning'}>
-                {diagnostics.data?.ok ? '全部就绪' : '需要处理'}
-              </Tag>
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={() => diagnostics.refetch()}
-                loading={diagnostics.isFetching}
-              >
-                重新检查
-              </Button>
+              <Tag color={diagnostics.data?.ok ? 'green' : 'warning'}>{diagnostics.data?.ok ? '全部就绪' : '需要处理'}</Tag>
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => diagnostics.refetch()} loading={diagnostics.isFetching}>重新检查</Button>
             </Space>
           }
         >
@@ -302,21 +325,9 @@ export default function SettingsPage() {
           ) : (
             <div>
               {(diagnostics.data?.checks ?? []).map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    display: 'flex',
-                    gap: 12,
-                    padding: '10px 0',
-                    borderBottom: '1px solid #f0f0f0',
-                  }}
-                >
+                <div key={item.label} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid #f0f0f0' }}>
                   <div style={{ paddingTop: 2 }}>
-                    {item.ok ? (
-                      <CheckCircleOutlined style={{ color: '#389e0d' }} />
-                    ) : (
-                      <CloseCircleOutlined style={{ color: '#d48806' }} />
-                    )}
+                    {item.ok ? <CheckCircleOutlined style={{ color: '#389e0d' }} /> : <CloseCircleOutlined style={{ color: '#d48806' }} />}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <Space wrap>
@@ -324,11 +335,7 @@ export default function SettingsPage() {
                       <Tag color={item.ok ? 'green' : 'warning'}>{item.ok ? 'OK' : '待处理'}</Tag>
                     </Space>
                     <div style={{ marginTop: 4, wordBreak: 'break-all' }}>{item.detail}</div>
-                    {!item.ok && item.action && (
-                      <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-                        {item.action}
-                      </Text>
-                    )}
+                    {!item.ok && item.action && <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>{item.action}</Text>}
                   </div>
                 </div>
               ))}
@@ -341,122 +348,125 @@ export default function SettingsPage() {
             size="small"
             title="微信公众号数据"
             style={{ marginBottom: 16, borderRadius: 8 }}
-            extra={
-              <Tag color={data?.wechat.app_secret_configured ? 'green' : 'warning'}>
-                {data?.wechat.app_secret_configured ? 'Secret 已配置' : 'Secret 未配置'}
-              </Tag>
-            }
+            extra={<Tag color={data?.wechat.app_secret_configured ? 'green' : 'warning'}>{data?.wechat.app_secret_configured ? 'Secret 已配置' : 'Secret 未配置'}</Tag>}
           >
-            <Form.Item label="WECHAT_APP_ID" name="wechat_app_id">
-              <Input placeholder="公众号 AppID" />
-            </Form.Item>
-            <Form.Item label="WECHAT_APP_SECRET" name="wechat_app_secret">
-              <Input.Password placeholder="留空则不修改现有 Secret" autoComplete="new-password" />
-            </Form.Item>
-            <Button
-              icon={<ApiOutlined />}
-              onClick={() => wechatTestMutation.mutate()}
-              loading={wechatTestMutation.isPending}
-            >
-              测试微信公众号连接
-            </Button>
+            <Form.Item label="WECHAT_APP_ID" name="wechat_app_id"><Input placeholder="公众号 AppID" /></Form.Item>
+            <Form.Item label="WECHAT_APP_SECRET" name="wechat_app_secret"><Input.Password placeholder="留空则不修改现有 Secret" autoComplete="new-password" /></Form.Item>
+            <Button icon={<ApiOutlined />} onClick={() => wechatTestMutation.mutate()} loading={wechatTestMutation.isPending}>测试微信公众号连接</Button>
           </Card>
 
           <Card
             size="small"
             title="AI 写作智能体"
             style={{ marginBottom: 16, borderRadius: 8 }}
-            extra={
-              <Tag color={data?.ai_writer.api_key_configured ? 'green' : 'default'}>
-                {data?.ai_writer.api_key_configured ? 'API Key 已配置' : 'API Key 未配置'}
-              </Tag>
-            }
+            extra={<Tag color={data?.ai_writer.api_key_configured ? 'green' : 'default'}>{data?.ai_writer.api_key_configured ? 'API Key 已配置' : 'API Key 未配置'}</Tag>}
           >
-            <Form.Item label="国内模型预设" name="ai_preset_provider">
-              <Select
-                allowClear
-                placeholder="选择后自动填入 Base URL 和推荐模型"
-                onChange={applyPreset}
-                options={(modelPresets ?? []).map((preset) => ({
-                  value: preset.key,
-                  label: preset.name,
-                }))}
-              />
+            <Form.Item label="模型预设" name="ai_preset_provider">
+              <Select allowClear placeholder="选择后自动填入 Base URL 和推荐模型" onChange={applyPreset} options={(presets.data ?? []).map((preset) => ({ value: preset.key, label: preset.name }))} />
             </Form.Item>
             <Form.Item label="Provider" name="ai_provider">
-              <Select
-                options={[
-                  { value: 'claude_cli', label: 'Claude CLI' },
-                  { value: 'openai_compatible', label: 'OpenAI-compatible API' },
-                ]}
-              />
+              <Select options={[{ value: 'claude_cli', label: 'Claude CLI' }, { value: 'openai_compatible', label: 'OpenAI-compatible API' }]} />
             </Form.Item>
-            <Form.Item label="Claude CLI 路径" name="claude_bin">
-              <Input placeholder="例如 C:/Users/me/AppData/Roaming/npm/claude.cmd" />
-            </Form.Item>
-            <Form.Item label="API Base URL" name="ai_base_url">
-              <Input placeholder="例如 https://api.deepseek.com/v1" />
-            </Form.Item>
-            <Form.Item label="API Key" name="ai_api_key">
-              <Input.Password placeholder="留空则不修改现有 API Key" autoComplete="new-password" />
-            </Form.Item>
-            <Form.Item label="Model" name="ai_model">
-              <Input placeholder="例如 deepseek-chat / gpt-4.1 / glm-4-plus" />
-            </Form.Item>
+            <Form.Item label="Claude CLI 路径" name="claude_bin"><Input placeholder="例如 C:/Users/me/AppData/Roaming/npm/claude.cmd" /></Form.Item>
+            <Form.Item label="API Base URL" name="ai_base_url"><Input placeholder="例如 https://api.openai.com/v1" /></Form.Item>
+            <Form.Item label="API Key" name="ai_api_key"><Input.Password placeholder="留空则不修改现有 API Key" autoComplete="new-password" /></Form.Item>
+            <Form.Item label="Model" name="ai_model"><Input placeholder="例如 gpt-4.1-mini / glm-4-plus / mimo-v2-pro" /></Form.Item>
             <Form.Item label="AI_EXTRA_BODY_JSON" name="ai_extra_body_json">
-              <Input.TextArea
-                rows={4}
-                placeholder={'例如 {"enable_thinking": false}，留空则不透传'}
-                style={{ fontFamily: 'monospace', fontSize: 12 }}
-              />
+              <Input.TextArea rows={4} placeholder={'例如 {"enable_thinking": false}，留空则不透传'} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </Form.Item>
-            <Button
-              icon={<ThunderboltOutlined />}
-              onClick={() => aiTestMutation.mutate()}
-              loading={aiTestMutation.isPending}
-            >
-              测试 AI 连接
-            </Button>
+            <Button icon={<ThunderboltOutlined />} onClick={() => aiTestMutation.mutate()} loading={aiTestMutation.isPending}>测试 AI 连接</Button>
           </Card>
 
           <Card
             size="small"
             title="搜索与热点源"
             style={{ marginBottom: 16, borderRadius: 8 }}
-            extra={
-              <Tag color={data?.search.api_key_configured ? 'green' : 'default'}>
-                {data?.search.api_key_configured ? 'Search Key 已配置' : 'Search Key 未配置'}
-              </Tag>
-            }
+            extra={<Tag color={data?.search.api_key_configured ? 'green' : 'default'}>{data?.search.api_key_configured ? 'Search Key 已配置' : 'Search Key 未配置'}</Tag>}
           >
-            <Form.Item label="SEARCH_PROVIDER" name="search_provider">
-              <Select
-                allowClear
-                options={[
-                  { value: 'custom', label: '自定义搜索 API' },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item label="SEARCH_BASE_URL" name="search_base_url">
-              <Input placeholder="返回 items/results，且每条结果包含 url/link/source_url" />
-            </Form.Item>
-            <Form.Item label="SEARCH_API_KEY" name="search_api_key">
-              <Input.Password placeholder="留空则不修改现有 Search Key" autoComplete="new-password" />
-            </Form.Item>
+            <Form.Item label="SEARCH_PROVIDER" name="search_provider"><Select allowClear options={[{ value: 'custom', label: '自定义搜索 API' }]} /></Form.Item>
+            <Form.Item label="SEARCH_BASE_URL" name="search_base_url"><Input placeholder="返回 items/results，且每条结果包含 url/link/source_url" /></Form.Item>
+            <Form.Item label="SEARCH_API_KEY" name="search_api_key"><Input.Password placeholder="留空则不修改现有 Search Key" autoComplete="new-password" /></Form.Item>
           </Card>
 
           <Space>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<SaveOutlined />}
-              loading={saveMutation.isPending}
-            >
-              保存配置
-            </Button>
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saveMutation.isPending}>保存配置</Button>
           </Space>
         </Form>
       </div>
+
+      <Modal
+        title="配置向导"
+        open={wizardOpen}
+        width={760}
+        onCancel={() => setWizardOpen(false)}
+        footer={
+          <Space>
+            <Button disabled={wizardStep === 0} onClick={() => setWizardStep((step) => step - 1)}>上一步</Button>
+            {wizardStep < 3 ? (
+              <Button type="primary" onClick={() => setWizardStep((step) => step + 1)}>下一步</Button>
+            ) : (
+              <Button type="primary" loading={setupWizardMutation.isPending} disabled={!wizardCanFinish} onClick={() => setupWizardMutation.mutate()}>一键保存配置</Button>
+            )}
+          </Space>
+        }
+      >
+        <Steps current={wizardStep} size="small" style={{ marginBottom: 20 }} items={[{ title: '选择模型' }, { title: '检测 Key' }, { title: '填写配置' }, { title: '确认保存' }]} />
+
+        {wizardStep === 0 && (
+          <Radio.Group value={wizardPreset} onChange={(event) => applyWizardPreset(event.target.value)} style={{ width: '100%' }}>
+            <Space orientation="vertical" style={{ width: '100%' }}>
+              {(presets.data ?? []).map((preset) => (
+                <Radio key={preset.key} value={preset.key} style={{ display: 'block', padding: '8px 0' }}>
+                  <Space orientation="vertical" size={2}>
+                    <Space>
+                      <Text strong>{preset.name}</Text>
+                      <Tag>{preset.recommended_models[0] || '自定义模型'}</Tag>
+                    </Space>
+                    <Text type="secondary">{preset.description}</Text>
+                  </Space>
+                </Radio>
+              ))}
+            </Space>
+          </Radio.Group>
+        )}
+
+        {wizardStep === 1 && (
+          <Space orientation="vertical" style={{ width: '100%' }} size={12}>
+            {discovery.isLoading ? <Spin /> : selectedCredential?.has_key ? (
+              <Alert type="success" showIcon title={`已发现 ${selectedCredential.name} API Key`} description={`${selectedCredential.key_name} · ${selectedCredential.key_source} · ${selectedCredential.key_preview}`} />
+            ) : (
+              <Alert type="warning" showIcon title={`未发现 ${selectedCredential?.name ?? selectedPreset?.name ?? '当前模型'} API Key`} description={`会检查：${(selectedCredential?.key_env_names ?? selectedPreset?.key_env_names ?? []).join(' / ') || 'AI_API_KEY'}`} />
+            )}
+          </Space>
+        )}
+
+        {wizardStep === 2 && (
+          <Space orientation="vertical" style={{ width: '100%' }} size={12}>
+            <div><Text strong>API Base URL</Text><Input value={wizardBaseUrl} onChange={(event) => setWizardBaseUrl(event.target.value)} style={{ marginTop: 6 }} /></div>
+            <div>
+              <Text strong>Model</Text>
+              <Select value={wizardModel} onChange={setWizardModel} onSearch={setWizardModel} showSearch style={{ width: '100%', marginTop: 6 }} options={(selectedPreset?.recommended_models ?? []).map((model) => ({ value: model, label: model }))} />
+            </div>
+            <div>
+              <Text strong>API Key</Text>
+              <Input.Password value={wizardApiKey} onChange={(event) => setWizardApiKey(event.target.value)} placeholder={selectedCredential?.has_key ? '已发现本机 Key，留空即可' : '粘贴 API Key'} autoComplete="new-password" style={{ marginTop: 6 }} />
+            </div>
+            <div><Text strong>AI_EXTRA_BODY_JSON</Text><Input.TextArea rows={4} value={wizardExtraBody} onChange={(event) => setWizardExtraBody(event.target.value)} style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 12 }} /></div>
+          </Space>
+        )}
+
+        {wizardStep === 3 && (
+          <Space orientation="vertical" style={{ width: '100%' }} size={12}>
+            <Alert type={wizardCanFinish ? 'info' : 'warning'} showIcon title={wizardCanFinish ? '可以保存配置' : '还缺少 API Key、Base URL 或 Model'} />
+            <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 8 }}>
+              <Text type="secondary">模型</Text><Text>{selectedPreset?.name}</Text>
+              <Text type="secondary">Base URL</Text><Text copyable>{wizardBaseUrl}</Text>
+              <Text type="secondary">Model</Text><Text>{wizardModel}</Text>
+              <Text type="secondary">API Key</Text><Text>{wizardApiKey ? '将使用手动填写的 Key' : selectedCredential?.has_key ? `使用 ${selectedCredential.key_name}` : '未填写'}</Text>
+            </div>
+          </Space>
+        )}
+      </Modal>
     </>
   )
 }
