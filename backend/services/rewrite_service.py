@@ -8,7 +8,7 @@ from database import SessionLocal
 from models import Article, Benchmark
 from services.ai_client import get_ai_client
 from services.article_service import parse_frontmatter
-from services.generate_service import _save_article, _validate_generated_article
+from services.generate_service import _normalize_generated_article, _save_article, _validate_generated_article
 from services.task_manager import task_manager
 
 
@@ -46,7 +46,7 @@ def run_rewrite_for_publish(task_id: str, slug: str, reference_benchmark_id: int
     client = get_ai_client(Config)
     task_manager.push_log(task_id, f"正在调用 AI 改写：{client.label()}", progress=15)
     response = client.generate_text(prompt)
-    output = response.text.strip()
+    output = _normalize_generated_article(response.text, f"{original_title}-发布版")
     _validate_generated_article(output)
 
     saved_path = _save_article(output, f"{original_title}-发布版", Config.ARTICLES_DIR)
