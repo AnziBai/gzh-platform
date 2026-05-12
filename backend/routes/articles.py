@@ -228,6 +228,13 @@ def _build_material_context(material_ids) -> str:
 MAX_KNOWLEDGE_CHUNKS = 5
 MAX_KNOWLEDGE_CONTEXT_CHARS = 8000
 MAX_KNOWLEDGE_CHUNK_CHARS = 3000
+MAX_KNOWLEDGE_LABEL_CHARS = 200
+KNOWLEDGE_CONTEXT_HEADER = "\n\n## Knowledge base snippets\n\n"
+
+
+def _truncate_knowledge_label(value) -> str:
+    label = str(value or "").strip()
+    return label[:MAX_KNOWLEDGE_LABEL_CHARS]
 
 
 def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
@@ -260,7 +267,7 @@ def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
         )
         by_id = {chunk.id: (chunk, file) for chunk, file in rows}
         parts = []
-        remaining_chars = MAX_KNOWLEDGE_CONTEXT_CHARS
+        remaining_chars = MAX_KNOWLEDGE_CONTEXT_CHARS - len(KNOWLEDGE_CONTEXT_HEADER)
         for chunk_id in ids:
             row = by_id.get(chunk_id)
             if not row:
@@ -271,14 +278,25 @@ def _build_knowledge_context(knowledge_chunk_ids: list[int]) -> str:
                 continue
             if remaining_chars <= 0:
                 break
-            title = chunk.title or file.original_filename or file.filename or f"Knowledge chunk {chunk.id}"
-            source = file.original_filename or file.filename or file.file_path or "knowledge base"
-            snippet = content[: min(MAX_KNOWLEDGE_CHUNK_CHARS, remaining_chars)]
-            parts.append(f"### {title}\nSource: {source}\n\n{snippet}")
-            remaining_chars -= len(snippet)
+            title = _truncate_knowledge_label(
+                chunk.title or file.original_filename or file.filename or f"Knowledge chunk {chunk.id}"
+            )
+            source = _truncate_knowledge_label(
+                file.original_filename or file.filename or file.file_path or "knowledge base"
+            )
+            part_prefix = f"### {title}\nSource: {source}\n\n"
+            separator = "\n\n" if parts else ""
+            part_overhead = len(separator) + len(part_prefix)
+            snippet_budget = min(MAX_KNOWLEDGE_CHUNK_CHARS, remaining_chars - part_overhead)
+            if snippet_budget <= 0:
+                break
+            snippet = content[:snippet_budget]
+            rendered_part = f"{separator}{part_prefix}{snippet}"
+            parts.append(rendered_part)
+            remaining_chars -= len(rendered_part)
         if not parts:
             return ""
-        return "\n\n## Knowledge base snippets\n\n" + "\n\n".join(parts)
+        return KNOWLEDGE_CONTEXT_HEADER + "".join(parts)
     finally:
         db.close()
 

@@ -13,7 +13,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
 from models import Article, ArticleStat, KnowledgeChunk, KnowledgeFile
-from routes.articles import articles_bp
+from routes.articles import MAX_KNOWLEDGE_CONTEXT_CHARS, articles_bp
 
 
 class ArticleReferencesTest(unittest.TestCase):
@@ -200,6 +200,47 @@ class ArticleReferencesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(run_task.call_args.args[5], "")
+
+    def test_generate_article_bounds_full_knowledge_context_with_large_metadata(self):
+        db = self.Session()
+        file = KnowledgeFile(
+            filename="fallback.md",
+            original_filename="S" * 1000,
+            file_type="md",
+            file_path="large.md",
+            status="ready",
+            chunk_count=1,
+        )
+        db.add(file)
+        db.flush()
+        chunk = KnowledgeChunk(
+            file_id=file.id,
+            chunk_index=0,
+            title="T" * 1000,
+            content="C" * 20000,
+            content_hash="hash-large-context",
+            keywords_json="[]",
+        )
+        db.add(chunk)
+        db.commit()
+        chunk_id = chunk.id
+        db.close()
+
+        with (
+            patch("services.task_manager.task_manager.create_task", return_value="task-5"),
+            patch("services.task_manager.task_manager.run") as run_task,
+        ):
+            response = self.client.post(
+                "/api/articles/generate",
+                json={"topic": "Large Context Topic", "knowledge_chunk_ids": [chunk_id]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        context_hint = run_task.call_args.args[5]
+        self.assertLessEqual(len(context_hint), MAX_KNOWLEDGE_CONTEXT_CHARS)
+        self.assertIn("Knowledge base snippets", context_hint)
+        self.assertNotIn("T" * 201, context_hint)
+        self.assertNotIn("S" * 201, context_hint)
 
 
 if __name__ == "__main__":
