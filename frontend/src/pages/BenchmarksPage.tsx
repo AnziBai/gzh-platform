@@ -465,7 +465,6 @@ export default function BenchmarksPage() {
           <Form.Item
             label="素材类型"
             name="material_type"
-            initialValue="reference_article"
             rules={[{ required: true, message: '请选择素材类型' }]}
           >
             <Select
