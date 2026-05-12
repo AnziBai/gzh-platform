@@ -44,7 +44,7 @@ def run_generate(
     client = get_ai_client(Config)
     task_manager.push_log(task_id, f"正在调用 AI 写作智能体：{client.label()}", progress=12)
     response = client.generate_text(prompt)
-    full_output = response.text.strip()
+    full_output = _normalize_generated_article(response.text, topic)
 
     for line in full_output[:1200].splitlines():
         clean = line.strip()
@@ -123,6 +123,60 @@ def _validate_generated_article(content: str) -> None:
     body = content[fm_match.end():].strip()
     if not body:
         raise RuntimeError("AI 生成内容缺少正文。")
+
+
+def _normalize_generated_article(content: str, topic: str) -> str:
+    text = (content or "").strip()
+    text = _strip_markdown_fence(text)
+
+    frontmatter_start = _find_frontmatter_start(text)
+    if frontmatter_start > 0:
+        return text[frontmatter_start:].strip()
+    if frontmatter_start == 0:
+        return text
+
+    body = text.strip()
+    if not body:
+        return body
+
+    title = _derive_title(body, topic)
+    slug = _slugify_topic(title or topic)
+    return f"---\ntitle: {title}\nslug: {slug}\n---\n\n{body}"
+
+
+def _strip_markdown_fence(text: str) -> str:
+    fence = re.match(r"^```(?:markdown|md)?\s*\n(.*?)\n```$", text, re.DOTALL | re.IGNORECASE)
+    if fence:
+        return fence.group(1).strip()
+    return text
+
+
+def _find_frontmatter_start(text: str) -> int:
+    match = re.search(r"(?m)^---\s*$", text)
+    return match.start() if match else -1
+
+
+def _derive_title(body: str, topic: str) -> str:
+    heading = re.search(r"(?m)^#\s+(.+?)\s*$", body)
+    if heading:
+        return _clean_frontmatter_value(heading.group(1))[:80] or topic[:80]
+
+    for line in body.splitlines():
+        clean = _clean_frontmatter_value(line)
+        if clean:
+            return clean[:80]
+    return _clean_frontmatter_value(topic)[:80] or "Untitled"
+
+
+def _clean_frontmatter_value(value: str) -> str:
+    return re.sub(r"[\r\n:]+", " ", (value or "").strip()).strip()
+
+
+def _slugify_topic(value: str) -> str:
+    from datetime import date
+
+    clean = re.sub(r"[^\w\u4e00-\u9fff]+", "-", (value or "")[:40]).strip("-").lower()
+    return f"{date.today().strftime('%Y%m%d')}-{clean or 'article'}"
 
 
 def _save_article(content: str, topic: str, articles_dir: str) -> str:

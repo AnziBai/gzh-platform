@@ -9,6 +9,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 from services.generate_service import (
     _build_reference_article_hint,
     _find_claude_bin,
+    _normalize_generated_article,
     _validate_generated_article,
 )
 
@@ -51,6 +52,27 @@ class GenerateServiceTest(unittest.TestCase):
 
     def test_validate_generated_article_accepts_title_and_body(self):
         _validate_generated_article("---\ntitle: Test\nslug: test\n---\n\n正文")
+
+    def test_normalize_generated_article_trims_preface_before_frontmatter(self):
+        output = _normalize_generated_article(
+            "Here is the article:\n\n---\ntitle: Test\nslug: test\n---\n\n正文",
+            "Fallback Topic",
+        )
+
+        self.assertTrue(output.startswith("---\ntitle: Test"))
+        self.assertNotIn("Here is the article", output)
+
+    def test_normalize_generated_article_wraps_body_without_frontmatter(self):
+        output = _normalize_generated_article(
+            "# 风险控制回撤\n\n正文内容",
+            "风险控制回撤的实战方法",
+        )
+
+        self.assertTrue(output.startswith("---\n"))
+        self.assertIn("title: 风险控制回撤", output)
+        self.assertIn("slug:", output)
+        self.assertIn("正文内容", output)
+        _validate_generated_article(output)
 
 
 if __name__ == "__main__":
