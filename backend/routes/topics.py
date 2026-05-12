@@ -84,9 +84,10 @@ def generate_topic_brief(topic_id):
     body = request.get_json(silent=True) or {}
     material_ids = body.get("material_ids") or []
     reference_article_slug = body.get("reference_article_slug")
+    knowledge_chunk_ids = body.get("knowledge_chunk_ids") or []
 
     task_id = task_manager.create_task("topic_brief", meta={"topic_id": topic_id})
-    task_manager.run(task_id, run_generate_brief, topic_id, material_ids, reference_article_slug)
+    task_manager.run(task_id, run_generate_brief, topic_id, material_ids, reference_article_slug, knowledge_chunk_ids)
     return success_response({"task_id": task_id})
 
 
@@ -102,12 +103,18 @@ def generate_topic_article(topic_id):
 
 def _serialize(t: Topic) -> dict:
     material_ids = []
+    knowledge_chunk_ids = []
     brief = None
     if t.material_ids_json:
         try:
             material_ids = json.loads(t.material_ids_json)
         except json.JSONDecodeError:
             material_ids = []
+    if t.knowledge_chunk_ids_json:
+        try:
+            knowledge_chunk_ids = json.loads(t.knowledge_chunk_ids_json)
+        except json.JSONDecodeError:
+            knowledge_chunk_ids = []
     if t.brief_json:
         try:
             brief = json.loads(t.brief_json)
@@ -124,6 +131,7 @@ def _serialize(t: Topic) -> dict:
         "status": t.status,
         "brief": brief,
         "material_ids": material_ids,
+        "knowledge_chunk_ids": knowledge_chunk_ids,
         "reference_article_slug": t.reference_article_slug,
         "generated_article_id": t.generated_article_id,
         "discovered_at": t.discovered_at.isoformat() if t.discovered_at else None,
