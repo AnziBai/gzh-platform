@@ -37,13 +37,23 @@ class DatabaseInitTest(unittest.TestCase):
         columns = {column["name"] for column in inspect(engine).get_columns("topics")}
         self.assertIn("brief_json", columns)
         self.assertIn("material_ids_json", columns)
+        self.assertIn("knowledge_chunk_ids_json", columns)
         self.assertIn("reference_article_slug", columns)
         self.assertIn("generated_article_id", columns)
 
     def test_init_db_creates_knowledge_tables_and_topic_column(self):
-        database.init_db()
+        tmp_root = BACKEND_DIR / "tests" / ".tmp"
+        tmp_root.mkdir(exist_ok=True)
+        db_path = tmp_root / f"knowledge-db-init-{uuid.uuid4().hex}" / "gzh_platform.db"
+        engine = create_engine("sqlite:///:memory:")
 
-        with database.engine.connect() as conn:
+        with (
+            patch("database.Config.DB_PATH", str(db_path)),
+            patch("database.engine", engine),
+        ):
+            database.init_db()
+
+        with engine.connect() as conn:
             tables = {
                 row[0]
                 for row in conn.exec_driver_sql(
