@@ -12,6 +12,7 @@ export interface Topic {
   status: string  // new | selected | used | dismissed
   brief: TopicBrief | null
   material_ids: number[]
+  knowledge_chunk_ids: number[]
   reference_article_slug: string | null
   generated_article_id: number | null
   discovered_at: string | null
@@ -61,7 +62,7 @@ export async function dismissTopic(id: number): Promise<Topic> {
 
 export async function generateTopicBrief(
   id: number,
-  data: { material_ids?: number[]; reference_article_slug?: string | null },
+  data: { material_ids?: number[]; reference_article_slug?: string | null; knowledge_chunk_ids?: number[] },
 ): Promise<{ task_id: string }> {
   const response = await client.post<ApiResponse<{ task_id: string }>>(`/topics/${id}/brief`, data)
   return response.data.data

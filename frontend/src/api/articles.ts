@@ -54,12 +54,14 @@ export async function generateArticle(
   benchmarkSlug?: string,
   referenceArticleSlug?: string,
   materialIds?: number[],
+  knowledgeChunkIds?: number[],
 ): Promise<TaskResponse> {
   const response = await client.post<ApiResponse<TaskResponse>>('/articles/generate', {
     topic,
     benchmark_slug: benchmarkSlug,
     reference_article_slug: referenceArticleSlug,
     material_ids: materialIds,
+    knowledge_chunk_ids: knowledgeChunkIds,
   })
   return response.data.data
 }
