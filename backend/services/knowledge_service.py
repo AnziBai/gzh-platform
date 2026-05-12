@@ -197,7 +197,7 @@ def serialize_chunk(record: KnowledgeChunk, reason: str | None = None, score: fl
     return payload
 
 
-def delete_file(db, file_id: int) -> bool:
+def delete_file(db, file_id: int, upload_root: str | None = None) -> bool:
     record = db.query(KnowledgeFile).filter(KnowledgeFile.id == file_id).first()
     if record is None:
         return False
@@ -207,8 +207,11 @@ def delete_file(db, file_id: int) -> bool:
     db.delete(record)
     db.commit()
 
-    if file_path.exists():
-        file_path.unlink()
+    if _is_path_within_root(file_path, upload_root) and file_path.exists():
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
     return True
 
 
@@ -274,6 +277,19 @@ def _load_keywords(value: str | None) -> list[str]:
     except json.JSONDecodeError:
         return []
     return data if isinstance(data, list) else []
+
+
+def _is_path_within_root(file_path: Path, upload_root: str | None) -> bool:
+    if not upload_root:
+        return False
+
+    try:
+        resolved_file = file_path.resolve(strict=False)
+        resolved_root = Path(upload_root).resolve(strict=False)
+        resolved_file.relative_to(resolved_root)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _isoformat(value) -> str | None:

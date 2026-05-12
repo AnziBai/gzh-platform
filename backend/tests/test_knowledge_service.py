@@ -16,6 +16,7 @@ from services.knowledge_service import (
     UnsupportedKnowledgeFile,
     KnowledgeParseError,
     chunk_text,
+    delete_file,
     extract_keywords,
     parse_uploaded_text,
     save_uploaded_file,
@@ -135,5 +136,30 @@ class KnowledgeServiceTest(unittest.TestCase):
             record = db.query(KnowledgeFile).one()
             self.assertEqual(record.status, "failed")
             self.assertFalse(Path(record.file_path).exists())
+        finally:
+            db.close()
+
+    def test_delete_file_does_not_unlink_outside_upload_root(self):
+        db = self.Session()
+        sentinel = Path(self.tmp.name) / "sentinel.txt"
+        sentinel.write_text("keep me", encoding="utf-8")
+        upload_root = Path(self.tmp.name) / "knowledge"
+        upload_root.mkdir()
+        try:
+            record = KnowledgeFile(
+                filename="sentinel.txt",
+                original_filename="sentinel.txt",
+                file_type="txt",
+                file_path=str(sentinel),
+                status="ready",
+                chunk_count=0,
+            )
+            db.add(record)
+            db.commit()
+            file_id = record.id
+
+            self.assertTrue(delete_file(db, file_id, upload_root=str(upload_root)))
+            self.assertIsNone(db.query(KnowledgeFile).filter(KnowledgeFile.id == file_id).first())
+            self.assertTrue(sentinel.exists())
         finally:
             db.close()

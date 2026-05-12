@@ -74,6 +74,16 @@ class KnowledgeRoutesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["status"], -1)
 
+    def test_recommend_rejects_json_list(self):
+        response = self.client.post("/api/knowledge/recommend", json=["not", "an", "object"])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["status"], -1)
+
+    def test_recommend_rejects_non_string_topic(self):
+        response = self.client.post("/api/knowledge/recommend", json={"topic": 123})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["status"], -1)
+
     def test_recommend_with_topic_returns_stub_shape(self):
         response = self.client.post(
             "/api/knowledge/recommend",

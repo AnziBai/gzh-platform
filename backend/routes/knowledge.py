@@ -57,7 +57,8 @@ def list_files():
 def remove_file(file_id):
     db = SessionLocal()
     try:
-        return success_response({"deleted": delete_file(db, file_id)})
+        upload_root = os.path.join(Config.GZHPUBLISHER_ROOT, "knowledge")
+        return success_response({"deleted": delete_file(db, file_id, upload_root=upload_root)})
     except Exception as exc:
         return error_response(str(exc), 500)
     finally:
@@ -67,7 +68,14 @@ def remove_file(file_id):
 @knowledge_bp.route("/knowledge/recommend", methods=["POST"])
 def recommend():
     body = request.get_json(silent=True) or {}
-    topic = (body.get("topic") or "").strip()
+    if not isinstance(body, dict):
+        return error_response("topic is required", 400)
+
+    topic_value = body.get("topic")
+    if not isinstance(topic_value, str):
+        return error_response("topic is required", 400)
+
+    topic = topic_value.strip()
     if not topic:
         return error_response("topic is required", 400)
 
