@@ -11,6 +11,7 @@ from models import Benchmark, KnowledgeChunk, KnowledgeFile
 
 ALLOWED_EXTENSIONS = {".md", ".txt", ".pdf"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_RECOMMENDATION_CANDIDATES = 1000
 
 
 class UnsupportedKnowledgeFile(Exception):
@@ -154,13 +155,13 @@ def extract_keywords(text: str, limit: int | None = None) -> list[str]:
     keywords = []
     seen = set()
     for match in re.finditer(r"[\w\u4e00-\u9fff]{2,}", text.lower()):
-        token = match.group(0)
-        if token in seen:
-            continue
-        seen.add(token)
-        keywords.append(token)
-        if limit is not None and len(keywords) >= limit:
-            break
+        for token in _expand_token(match.group(0)):
+            if token in seen:
+                continue
+            seen.add(token)
+            keywords.append(token)
+            if limit is not None and len(keywords) >= limit:
+                return keywords
     return keywords
 
 
@@ -227,16 +228,19 @@ def recommend_for_topic(
     tokens = set(extract_keywords(query, limit=30))
 
     chunk_query = db.query(KnowledgeChunk)
-    if knowledge_file_ids:
+    if knowledge_file_ids is not None:
         chunk_query = chunk_query.filter(KnowledgeChunk.file_id.in_(knowledge_file_ids))
+    chunk_query = chunk_query.order_by(KnowledgeChunk.id.desc()).limit(MAX_RECOMMENDATION_CANDIDATES)
+
+    benchmark_query = db.query(Benchmark).order_by(Benchmark.relevance_score.desc(), Benchmark.id.desc())
 
     chunks = _rank_chunks(chunk_query.all(), tokens)[:limit]
     facts = _rank_benchmarks(
-        db.query(Benchmark).filter(Benchmark.material_type == "fact_material").all(),
+        benchmark_query.filter(Benchmark.material_type == "fact_material").limit(MAX_RECOMMENDATION_CANDIDATES).all(),
         tokens,
     )[:3]
     references = _rank_benchmarks(
-        db.query(Benchmark).filter(Benchmark.material_type == "reference_article").all(),
+        benchmark_query.filter(Benchmark.material_type == "reference_article").limit(MAX_RECOMMENDATION_CANDIDATES).all(),
         tokens,
     )[:3]
 
@@ -273,15 +277,20 @@ def _rank_benchmarks(benchmarks: list[Benchmark], tokens: set[str]) -> list[dict
     for benchmark in benchmarks:
         match_score, reason = _score_text_match(
             tokens,
-            [benchmark.title, benchmark.keywords, benchmark.classification_reason],
+            [
+                benchmark.title,
+                benchmark.platform,
+                benchmark.source_url,
+                benchmark.file_path,
+                benchmark.keywords,
+                benchmark.classification_reason,
+            ],
         )
         relevance_score = float(benchmark.relevance_score or 0)
-        if match_score <= 0 and relevance_score <= 0:
+        if match_score <= 0:
             continue
 
         score = match_score + relevance_score
-        if match_score <= 0:
-            reason = "Positive relevance score"
         ranked.append((score, benchmark.id or 0, _serialize_benchmark(benchmark, reason, score)))
     ranked.sort(key=lambda item: (-item[0], item[1]))
     return [item[2] for item in ranked]
@@ -317,6 +326,13 @@ def _score_text_match(tokens: set[str], values: list[str | None]) -> tuple[float
     if not matches:
         return 0.0, None
     return float(len(matches)), f"Matched keywords: {', '.join(matches[:5])}"
+
+
+def _expand_token(token: str) -> list[str]:
+    expanded = [token]
+    if re.search(r"[\u4e00-\u9fff]", token):
+        expanded.extend(token[index : index + 2] for index in range(len(token) - 1))
+    return expanded
 
 
 def _normalize_text(text: str) -> str:

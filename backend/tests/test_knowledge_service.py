@@ -65,6 +65,15 @@ class KnowledgeServiceTest(unittest.TestCase):
         keywords = extract_keywords("alpha beta alpha gamma")
         self.assertEqual(keywords[:3], ["alpha", "beta", "gamma"])
 
+    def test_extract_keywords_expands_chinese_bigrams(self):
+        keywords = extract_keywords("风险控制回撤")
+        self.assertIn("风险控制回撤", keywords)
+        self.assertIn("风险", keywords)
+        self.assertIn("险控", keywords)
+        self.assertIn("控制", keywords)
+        self.assertIn("制回", keywords)
+        self.assertIn("回撤", keywords)
+
     def test_extract_keywords_default_returns_more_than_twenty_terms(self):
         text = " ".join(f"term{i:02d}" for i in range(25))
         keywords = extract_keywords(text)
@@ -200,7 +209,7 @@ class KnowledgeServiceTest(unittest.TestCase):
             )
             db.add(
                 Benchmark(
-                    title="Viral Trading Article",
+                    title="Risk Trading Article",
                     platform="manual",
                     material_type="reference_article",
                     source_url="https://example.com/ref",
@@ -214,7 +223,7 @@ class KnowledgeServiceTest(unittest.TestCase):
 
             self.assertEqual(result["knowledge_chunks"][0]["title"], "Risk Control")
             self.assertEqual(result["fact_materials"][0]["title"], "Risk Case")
-            self.assertEqual(result["reference_articles"][0]["title"], "Viral Trading Article")
+            self.assertEqual(result["reference_articles"][0]["title"], "Risk Trading Article")
             self.assertEqual(result["warnings"], [])
         finally:
             db.close()
@@ -265,6 +274,97 @@ class KnowledgeServiceTest(unittest.TestCase):
             result = recommend_for_topic(db, topic="risk control", knowledge_file_ids=[file2.id])
 
             self.assertEqual([item["title"] for item in result["knowledge_chunks"]], ["Included Risk"])
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_empty_file_ids_returns_no_chunks(self):
+        db = self.Session()
+        try:
+            file = KnowledgeFile(
+                filename="alpha.md",
+                original_filename="alpha.md",
+                file_type="md",
+                file_path="alpha.md",
+                status="ready",
+                chunk_count=1,
+            )
+            db.add(file)
+            db.flush()
+            db.add(
+                KnowledgeChunk(
+                    file_id=file.id,
+                    chunk_index=0,
+                    title="Risk Control",
+                    content="risk control drawdown",
+                    content_hash="hash-a",
+                    keywords_json='["risk","control","drawdown"]',
+                )
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="risk control", knowledge_file_ids=[])
+
+            self.assertEqual(result["knowledge_chunks"], [])
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_chinese_bigram_match(self):
+        db = self.Session()
+        try:
+            file = KnowledgeFile(
+                filename="risk.md",
+                original_filename="risk.md",
+                file_type="md",
+                file_path="risk.md",
+                status="ready",
+                chunk_count=1,
+            )
+            db.add(file)
+            db.flush()
+            db.add(
+                KnowledgeChunk(
+                    file_id=file.id,
+                    chunk_index=0,
+                    title="策略风控",
+                    content="风险控制是降低回撤的核心",
+                    content_hash="hash-cn",
+                    keywords_json='["风险控制是降低回撤的核心"]',
+                )
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="风险控制回撤")
+
+            self.assertEqual(result["knowledge_chunks"][0]["title"], "策略风控")
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_excludes_positive_relevance_without_token_match(self):
+        db = self.Session()
+        try:
+            db.add_all(
+                [
+                    Benchmark(
+                        title="Unrelated Viral Article",
+                        platform="manual",
+                        material_type="reference_article",
+                        source_url="https://example.com/viral",
+                        relevance_score=10,
+                    ),
+                    Benchmark(
+                        title="Risk Matched Article",
+                        platform="manual",
+                        material_type="reference_article",
+                        source_url="https://example.com/risk",
+                        relevance_score=0.1,
+                    ),
+                ]
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="risk control")
+
+            self.assertEqual([item["title"] for item in result["reference_articles"]], ["Risk Matched Article"])
         finally:
             db.close()
 
