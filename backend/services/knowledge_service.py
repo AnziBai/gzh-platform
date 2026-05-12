@@ -64,6 +64,8 @@ def save_uploaded_file(db, upload_dir: str, original_filename: str, content: byt
 
     try:
         text = parse_uploaded_text(original_filename, content)
+        if not text.strip():
+            raise KnowledgeParseError("No usable text was parsed")
         upload_path.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(content)
 

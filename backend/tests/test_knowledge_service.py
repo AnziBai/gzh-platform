@@ -100,6 +100,27 @@ class KnowledgeServiceTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_empty_parsed_text_records_failed_status(self):
+        db = self.Session()
+        try:
+            with self.assertRaises(KnowledgeParseError) as ctx:
+                save_uploaded_file(
+                    db,
+                    upload_dir=self.tmp.name,
+                    original_filename="empty.txt",
+                    content=b"   \n\n",
+                )
+            self.assertEqual(str(ctx.exception), "No usable text was parsed")
+
+            record = db.query(KnowledgeFile).one()
+            self.assertEqual(record.status, "failed")
+            self.assertEqual(record.error_message, "No usable text was parsed")
+            self.assertEqual(record.chunk_count, 0)
+            if record.file_path:
+                self.assertFalse(Path(record.file_path).exists())
+        finally:
+            db.close()
+
     def test_failed_chunking_removes_written_upload_file(self):
         db = self.Session()
         try:
