@@ -92,6 +92,8 @@ def save_uploaded_file(db, upload_dir: str, original_filename: str, content: byt
         db.refresh(record)
         return serialize_file(record)
     except (UnsupportedKnowledgeFile, KnowledgeParseError) as exc:
+        if file_path.exists():
+            file_path.unlink()
         db.rollback()
         record.status = "failed"
         record.error_message = str(exc)
@@ -99,6 +101,8 @@ def save_uploaded_file(db, upload_dir: str, original_filename: str, content: byt
         db.commit()
         raise
     except Exception as exc:
+        if file_path.exists():
+            file_path.unlink()
         db.rollback()
         record.status = "failed"
         record.error_message = str(exc)
@@ -112,7 +116,6 @@ def chunk_text(text: str, target_size: int = 1000) -> list[dict]:
     if not normalized:
         return []
 
-    title = _first_markdown_heading(normalized)
     chunks = []
     current = ""
     for part in _split_parts(normalized):
@@ -129,19 +132,23 @@ def chunk_text(text: str, target_size: int = 1000) -> list[dict]:
     if current:
         chunks.extend(_chunk_oversized(current, target_size))
 
-    return [
-        {
-            "chunk_index": index,
-            "title": title,
-            "content": content,
-            "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-            "keywords": extract_keywords(content),
-        }
-        for index, content in enumerate(chunk for chunk in chunks if chunk.strip())
-    ]
+    result = []
+    title = None
+    for content in (chunk for chunk in chunks if chunk.strip()):
+        title = _first_markdown_heading(content) or title
+        result.append(
+            {
+                "chunk_index": len(result),
+                "title": title,
+                "content": content,
+                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "keywords": extract_keywords(content),
+            }
+        )
+    return result
 
 
-def extract_keywords(text: str, limit: int = 20) -> list[str]:
+def extract_keywords(text: str, limit: int | None = None) -> list[str]:
     keywords = []
     seen = set()
     for match in re.finditer(r"[\w\u4e00-\u9fff]{2,}", text.lower()):
@@ -150,7 +157,7 @@ def extract_keywords(text: str, limit: int = 20) -> list[str]:
             continue
         seen.add(token)
         keywords.append(token)
-        if len(keywords) >= limit:
+        if limit is not None and len(keywords) >= limit:
             break
     return keywords
 
