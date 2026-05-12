@@ -11,7 +11,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base
-from models import KnowledgeFile
+from models import Benchmark, KnowledgeChunk, KnowledgeFile
 from services.knowledge_service import (
     UnsupportedKnowledgeFile,
     KnowledgeParseError,
@@ -19,6 +19,7 @@ from services.knowledge_service import (
     delete_file,
     extract_keywords,
     parse_uploaded_text,
+    recommend_for_topic,
     save_uploaded_file,
 )
 
@@ -161,5 +162,131 @@ class KnowledgeServiceTest(unittest.TestCase):
             self.assertTrue(delete_file(db, file_id, upload_root=str(upload_root)))
             self.assertIsNone(db.query(KnowledgeFile).filter(KnowledgeFile.id == file_id).first())
             self.assertTrue(sentinel.exists())
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_returns_ranked_chunks_and_materials(self):
+        db = self.Session()
+        try:
+            file = KnowledgeFile(
+                filename="alpha.md",
+                original_filename="alpha.md",
+                file_type="md",
+                file_path="alpha.md",
+                status="ready",
+                chunk_count=1,
+            )
+            db.add(file)
+            db.flush()
+            db.add(
+                KnowledgeChunk(
+                    file_id=file.id,
+                    chunk_index=0,
+                    title="Risk Control",
+                    content="Risk control position sizing drawdown alpha",
+                    content_hash="hash-a",
+                    keywords_json='["risk","control","drawdown"]',
+                )
+            )
+            db.add(
+                Benchmark(
+                    title="Risk Case",
+                    platform="manual",
+                    material_type="fact_material",
+                    source_url="https://example.com/risk",
+                    file_path=None,
+                    relevance_score=0.5,
+                )
+            )
+            db.add(
+                Benchmark(
+                    title="Viral Trading Article",
+                    platform="manual",
+                    material_type="reference_article",
+                    source_url="https://example.com/ref",
+                    file_path=None,
+                    relevance_score=0.8,
+                )
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="risk control drawdown", config=None)
+
+            self.assertEqual(result["knowledge_chunks"][0]["title"], "Risk Control")
+            self.assertEqual(result["fact_materials"][0]["title"], "Risk Case")
+            self.assertEqual(result["reference_articles"][0]["title"], "Viral Trading Article")
+            self.assertEqual(result["warnings"], [])
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_scopes_chunks_to_requested_file_ids(self):
+        db = self.Session()
+        try:
+            file1 = KnowledgeFile(
+                filename="alpha.md",
+                original_filename="alpha.md",
+                file_type="md",
+                file_path="alpha.md",
+                status="ready",
+                chunk_count=1,
+            )
+            file2 = KnowledgeFile(
+                filename="beta.md",
+                original_filename="beta.md",
+                file_type="md",
+                file_path="beta.md",
+                status="ready",
+                chunk_count=1,
+            )
+            db.add_all([file1, file2])
+            db.flush()
+            db.add_all(
+                [
+                    KnowledgeChunk(
+                        file_id=file1.id,
+                        chunk_index=0,
+                        title="Excluded Risk",
+                        content="risk control drawdown",
+                        content_hash="hash-a",
+                        keywords_json='["risk","control","drawdown"]',
+                    ),
+                    KnowledgeChunk(
+                        file_id=file2.id,
+                        chunk_index=0,
+                        title="Included Risk",
+                        content="risk control drawdown",
+                        content_hash="hash-b",
+                        keywords_json='["risk","control","drawdown"]',
+                    ),
+                ]
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="risk control", knowledge_file_ids=[file2.id])
+
+            self.assertEqual([item["title"] for item in result["knowledge_chunks"]], ["Included Risk"])
+        finally:
+            db.close()
+
+    def test_recommend_for_topic_empty_matches_returns_empty_arrays_and_warnings(self):
+        db = self.Session()
+        try:
+            db.add(
+                Benchmark(
+                    title="Unrelated",
+                    platform="manual",
+                    material_type="fact_material",
+                    source_url="https://example.com/other",
+                    relevance_score=0,
+                )
+            )
+            db.commit()
+
+            result = recommend_for_topic(db, topic="risk control")
+
+            self.assertEqual(result["knowledge_chunks"], [])
+            self.assertEqual(result["fact_materials"], [])
+            self.assertEqual(result["reference_articles"], [])
+            self.assertIsInstance(result["warnings"], list)
         finally:
             db.close()

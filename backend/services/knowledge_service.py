@@ -7,7 +7,7 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 
-from models import KnowledgeChunk, KnowledgeFile
+from models import Benchmark, KnowledgeChunk, KnowledgeFile
 
 ALLOWED_EXTENSIONS = {".md", ".txt", ".pdf"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -223,7 +223,100 @@ def recommend_for_topic(
     limit: int = 5,
     config=None,
 ) -> dict:
-    return {"knowledge_chunks": [], "fact_materials": [], "reference_articles": [], "warnings": []}
+    query = " ".join([topic or "", hotspot_title or ""]).strip()
+    tokens = set(extract_keywords(query, limit=30))
+
+    chunk_query = db.query(KnowledgeChunk)
+    if knowledge_file_ids:
+        chunk_query = chunk_query.filter(KnowledgeChunk.file_id.in_(knowledge_file_ids))
+
+    chunks = _rank_chunks(chunk_query.all(), tokens)[:limit]
+    facts = _rank_benchmarks(
+        db.query(Benchmark).filter(Benchmark.material_type == "fact_material").all(),
+        tokens,
+    )[:3]
+    references = _rank_benchmarks(
+        db.query(Benchmark).filter(Benchmark.material_type == "reference_article").all(),
+        tokens,
+    )[:3]
+
+    result = {
+        "knowledge_chunks": chunks,
+        "fact_materials": facts,
+        "reference_articles": references,
+        "warnings": [],
+    }
+    if config is not None and chunks:
+        try:
+            return _ai_rerank_or_fallback(config, query, result)
+        except Exception as exc:
+            result["warnings"].append(f"AI rerank failed, used local ranking: {exc}")
+    return result
+
+
+def _rank_chunks(chunks: list[KnowledgeChunk], tokens: set[str]) -> list[dict]:
+    ranked = []
+    for chunk in chunks:
+        score, reason = _score_text_match(
+            tokens,
+            [chunk.title, chunk.content, " ".join(_load_keywords(chunk.keywords_json))],
+        )
+        if score <= 0:
+            continue
+        ranked.append((score, chunk.id or 0, serialize_chunk(chunk, reason=reason, score=score)))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [item[2] for item in ranked]
+
+
+def _rank_benchmarks(benchmarks: list[Benchmark], tokens: set[str]) -> list[dict]:
+    ranked = []
+    for benchmark in benchmarks:
+        match_score, reason = _score_text_match(
+            tokens,
+            [benchmark.title, benchmark.keywords, benchmark.classification_reason],
+        )
+        relevance_score = float(benchmark.relevance_score or 0)
+        if match_score <= 0 and relevance_score <= 0:
+            continue
+
+        score = match_score + relevance_score
+        if match_score <= 0:
+            reason = "Positive relevance score"
+        ranked.append((score, benchmark.id or 0, _serialize_benchmark(benchmark, reason, score)))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [item[2] for item in ranked]
+
+
+def _serialize_benchmark(record: Benchmark, reason: str | None = None, score: float | None = None) -> dict:
+    return {
+        "id": record.id,
+        "title": record.title,
+        "platform": record.platform,
+        "source_url": record.source_url,
+        "file_path": record.file_path,
+        "material_type": record.material_type,
+        "reason": reason,
+        "score": score,
+    }
+
+
+def _ai_rerank_or_fallback(config, query: str, result: dict) -> dict:
+    return result
+
+
+def _score_text_match(tokens: set[str], values: list[str | None]) -> tuple[float, str | None]:
+    if not tokens:
+        return 0.0, None
+
+    haystack_tokens = set()
+    for value in values:
+        if value:
+            haystack_tokens.update(extract_keywords(value))
+
+    matches = sorted(tokens.intersection(haystack_tokens))
+    if not matches:
+        return 0.0, None
+    return float(len(matches)), f"Matched keywords: {', '.join(matches[:5])}"
 
 
 def _normalize_text(text: str) -> str:
