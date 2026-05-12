@@ -32,14 +32,20 @@ class EnvironmentCheckServiceTest(unittest.TestCase):
             result = deployment_diagnostics(DummyConfig)
 
         labels = [check["label"] for check in result["checks"]]
+        keyed_checks = {check.get("key"): check for check in result["checks"] if check.get("key")}
         self.assertIn("OpenAI-compatible API", labels)
         self.assertIn("微信公众号凭证", labels)
         self.assertIn("Wenyan 排版依赖", labels)
+        self.assertIn("pdf_parser", keyed_checks)
+        self.assertIn("ok", keyed_checks["pdf_parser"])
+        self.assertIsInstance(keyed_checks["pdf_parser"]["detail"], str)
+        self.assertIsInstance(keyed_checks["pdf_parser"]["label"], str)
         self.assertIn("setup_steps", result)
         self.assertIn("capabilities", result)
         self.assertTrue(result["capabilities"]["can_generate_articles"])
         self.assertTrue(result["capabilities"]["can_publish_drafts"])
-        self.assertTrue(result["ok"])
+        required_checks_ok = all(check["ok"] for check in result["checks"] if check.get("key") != "pdf_parser")
+        self.assertEqual(result["ok"], required_checks_ok)
 
     def test_deployment_diagnostics_flags_missing_openai_config(self):
         class MissingAI(DummyConfig):

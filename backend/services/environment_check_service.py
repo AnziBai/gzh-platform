@@ -7,13 +7,16 @@ from services.ai_client import find_claude_bin
 from services.prompt_loader import load_auditor_spec, load_writer_spec
 
 
-def _status(ok: bool, label: str, detail: str, action: str = "") -> dict:
-    return {
+def _status(ok: bool, label: str, detail: str, action: str = "", key: str = "") -> dict:
+    status = {
         "ok": ok,
         "label": label,
         "detail": detail,
         "action": action,
     }
+    if key:
+        status["key"] = key
+    return status
 
 
 def _step(key: str, title: str, ok: bool, description: str, action: str) -> dict:
@@ -56,6 +59,27 @@ def _wenyan_core_exists() -> tuple[bool, str]:
         if wrapper.exists() and utils.exists():
             return True, str(root)
     return False, "未找到 @wenyan-md/mcp 的全局安装目录"
+
+
+def _pdf_parser_check() -> dict:
+    try:
+        import pypdf  # noqa: F401
+    except ImportError:
+        return _status(
+            False,
+            "PDF parser",
+            "Install pypdf to enable PDF knowledge uploads. Markdown and TXT uploads still work.",
+            "Install pypdf to enable PDF knowledge uploads. Markdown and TXT uploads still work.",
+            "pdf_parser",
+        )
+
+    return _status(
+        True,
+        "PDF parser",
+        "pypdf is installed; PDF knowledge uploads are available.",
+        "",
+        "pdf_parser",
+    )
 
 
 def deployment_diagnostics(config) -> dict:
@@ -161,6 +185,9 @@ def deployment_diagnostics(config) -> dict:
     )
     checks.append(wenyan_check)
 
+    pdf_parser_check = _pdf_parser_check()
+    checks.append(pdf_parser_check)
+
     git_path = shutil.which("git")
     git_check = _status(
         bool(git_path),
@@ -214,7 +241,7 @@ def deployment_diagnostics(config) -> dict:
     }
 
     return {
-        "ok": all(item["ok"] for item in checks),
+        "ok": all(item["ok"] for item in checks if item.get("key") != "pdf_parser"),
         "checks": checks,
         "setup_steps": setup_steps,
         "capabilities": capabilities,
