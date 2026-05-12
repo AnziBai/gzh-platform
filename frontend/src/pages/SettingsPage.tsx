@@ -1,15 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Form, Input, Select, Space, Spin, Tag, Typography, message } from 'antd'
 import {
   ApiOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  FolderAddOutlined,
   ReloadOutlined,
   SaveOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
+import { bootstrapSettings, getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
 import type { SettingsUpdate } from '../api/settings'
 
 const { Text } = Typography
@@ -27,6 +28,7 @@ interface SettingsFormValues {
 export default function SettingsPage() {
   const [form] = Form.useForm<SettingsFormValues>()
   const [messageApi, contextHolder] = message.useMessage()
+  const [bootstrapRoot, setBootstrapRoot] = useState('')
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
@@ -84,6 +86,18 @@ export default function SettingsPage() {
     },
   })
 
+  const bootstrapMutation = useMutation({
+    mutationFn: () => bootstrapSettings(bootstrapRoot || undefined),
+    onSuccess: () => {
+      messageApi.success('首次部署目录已创建，目录配置已写入 .env')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['settings-diagnostics'] })
+    },
+    onError: (err: Error) => {
+      messageApi.error(`首次部署向导失败：${err.message}`)
+    },
+  })
+
   const handleFinish = (values: SettingsFormValues) => {
     const payload: SettingsUpdate = {
       wechat: {
@@ -132,6 +146,32 @@ export default function SettingsPage() {
           description="密钥字段不会回显，留空表示保留现有密钥。保存后多数配置会即时生效；如果外部进程仍使用旧环境变量，再重启后端。"
           style={{ marginBottom: 16 }}
         />
+
+        <Card
+          size="small"
+          title="首次部署向导"
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          extra={<Tag color="blue">只配置目录，不安装依赖</Tag>}
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <Text type="secondary">
+              一键创建文章、素材、资源和数据库目录，并写入 backend/.env。公众号密钥、AI Key 和 IP 白名单仍需要你按诊断提示填写。
+            </Text>
+            <Input
+              value={bootstrapRoot}
+              onChange={(event) => setBootstrapRoot(event.target.value)}
+              placeholder={data?.directories.gzhpublisher_root || '例如 C:/gzh-content'}
+            />
+            <Button
+              type="primary"
+              icon={<FolderAddOutlined />}
+              loading={bootstrapMutation.isPending}
+              onClick={() => bootstrapMutation.mutate()}
+            >
+              创建目录并写入 .env
+            </Button>
+          </Space>
+        </Card>
 
         <Card
           size="small"

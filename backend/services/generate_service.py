@@ -14,6 +14,7 @@ def run_generate(
     topic: str,
     benchmark_slug: str | None = None,
     reference_article_slug: str | None = None,
+    context_hint: str | None = None,
 ):
     from config import Config
 
@@ -25,6 +26,8 @@ def run_generate(
     benchmark_hint = _build_benchmark_hint(benchmark_slug)
     if reference_article_slug:
         benchmark_hint += _build_reference_article_hint(reference_article_slug)
+    if context_hint:
+        benchmark_hint += context_hint
 
     prompt = f"""{writer_spec}
 

@@ -9,6 +9,10 @@ ALLOWED_ENV_KEYS = {
     "AI_API_KEY",
     "AI_MODEL",
     "CLAUDE_BIN",
+    "GZHPUBLISHER_ROOT",
+    "ARTICLES_DIR",
+    "BENCHMARKS_DIR",
+    "ASSETS_DIR",
 }
 
 
@@ -24,6 +28,13 @@ def settings_payload(config) -> dict:
             "api_key_configured": bool(config.AI_API_KEY),
             "model": config.AI_MODEL or "",
             "claude_bin": config.CLAUDE_BIN or "",
+        },
+        "directories": {
+            "gzhpublisher_root": config.GZHPUBLISHER_ROOT or "",
+            "articles_dir": config.ARTICLES_DIR or "",
+            "benchmarks_dir": config.BENCHMARKS_DIR or "",
+            "assets_dir": config.ASSETS_DIR or "",
+            "database_dir": str(Path(config.DB_PATH).parent),
         },
     }
 
@@ -73,3 +84,39 @@ def update_env_file(env_path: str, updates: dict[str, str]) -> None:
             output.append(f"{key}={value}")
 
     path.write_text("\n".join(output).rstrip() + "\n", encoding="utf-8")
+
+
+def bootstrap_directories(config, root_dir: str | None = None) -> dict:
+    root = Path(root_dir or config.GZHPUBLISHER_ROOT).expanduser()
+    articles_dir = root / "articles" / "published"
+    benchmarks_dir = root / "skills" / "fuwei-geo" / "references" / "benchmark-articles"
+    assets_dir = root / "assets"
+    database_dir = Path(config.DB_PATH).parent
+
+    for path in (root, articles_dir, benchmarks_dir, assets_dir, database_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    updates = {
+        "GZHPUBLISHER_ROOT": _normalize_path(root),
+        "ARTICLES_DIR": _normalize_path(articles_dir),
+        "BENCHMARKS_DIR": _normalize_path(benchmarks_dir),
+        "ASSETS_DIR": _normalize_path(assets_dir),
+    }
+    update_env_file(config.ENV_PATH, updates)
+
+    for key, value in updates.items():
+        setattr(config, key, value)
+
+    return {
+        "created": updates | {"DATABASE_DIR": _normalize_path(database_dir)},
+        "next_steps": [
+            "Fill WeChat App ID and App Secret",
+            "Fill AI provider credentials",
+            "Configure WeChat IP whitelist",
+            "Run diagnostics and connection tests",
+        ],
+    }
+
+
+def _normalize_path(path: Path) -> str:
+    return str(path.resolve()).replace("\\", "/")

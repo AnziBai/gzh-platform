@@ -13,6 +13,13 @@ export interface Settings {
     model: string
     claude_bin: string
   }
+  directories: {
+    gzhpublisher_root: string
+    articles_dir: string
+    benchmarks_dir: string
+    assets_dir: string
+    database_dir: string
+  }
 }
 
 export interface SettingsUpdate {
@@ -71,5 +78,18 @@ export interface DiagnosticsResult {
 
 export async function getSettingsDiagnostics(): Promise<DiagnosticsResult> {
   const response = await client.get<ApiResponse<DiagnosticsResult>>('/settings/diagnostics')
+  return response.data.data
+}
+
+export async function bootstrapSettings(rootDir?: string): Promise<{
+  created: Record<string, string>
+  next_steps: string[]
+  diagnostics: DiagnosticsResult
+}> {
+  const response = await client.post<ApiResponse<{
+    created: Record<string, string>
+    next_steps: string[]
+    diagnostics: DiagnosticsResult
+  }>>('/settings/bootstrap', { root_dir: rootDir })
   return response.data.data
 }

@@ -18,6 +18,8 @@ def init_db():
     os.makedirs(os.path.dirname(Config.DB_PATH), exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_article_stats_columns()
+    _ensure_benchmark_columns()
+    _ensure_topic_workflow_columns()
 
 
 def _ensure_article_stats_columns():
@@ -34,6 +36,39 @@ def _ensure_article_stats_columns():
         for name, definition in missing_columns.items():
             if name not in existing:
                 conn.execute(text(f"ALTER TABLE article_stats ADD COLUMN {name} {definition}"))
+
+
+def _ensure_benchmark_columns():
+    _ensure_columns(
+        "benchmarks",
+        {
+            "material_type": "VARCHAR DEFAULT 'reference_article' NOT NULL",
+        },
+    )
+
+
+def _ensure_topic_workflow_columns():
+    _ensure_columns(
+        "topics",
+        {
+            "brief_json": "TEXT",
+            "material_ids_json": "TEXT",
+            "reference_article_slug": "VARCHAR",
+            "generated_article_id": "INTEGER",
+        },
+    )
+
+
+def _ensure_columns(table_name: str, missing_columns: dict[str, str]):
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns(table_name)}
+    with engine.begin() as conn:
+        for name, definition in missing_columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {definition}"))
 
 
 def get_db():

@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button, Tag, Spin, Alert, Empty, Typography, Table, Progress,
-  Tabs, message,
+  Tabs, message, Modal, Select, List, Divider,
 } from 'antd'
-import { FireOutlined, CheckOutlined, StopOutlined } from '@ant-design/icons'
-import { getTopics, scrapeTopics, selectTopic, dismissTopic } from '../api/topics'
+import { FireOutlined, CheckOutlined, StopOutlined, FileTextOutlined } from '@ant-design/icons'
+import { getTopics, scrapeTopics, selectTopic, dismissTopic, generateTopicArticle, generateTopicBrief } from '../api/topics'
+import { getBenchmarks } from '../api/benchmarks'
+import { getHotReferenceArticles } from '../api/articles'
 import { useTaskStream } from '../hooks/useTaskStream'
 import type { Topic } from '../api/topics'
 
@@ -37,14 +39,29 @@ export default function TopicsPage() {
   const [messageApi, contextHolder] = message.useMessage()
   const [activeTab, setActiveTab] = useState('all')
   const [taskId, setTaskId] = useState<string | null>(null)
+  const [workflowTaskId, setWorkflowTaskId] = useState<string | null>(null)
+  const [workflowMode, setWorkflowMode] = useState<'brief' | 'article' | null>(null)
   const [scraping, setScraping] = useState(false)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [briefTopic, setBriefTopic] = useState<Topic | null>(null)
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>([])
+  const [selectedReferenceSlug, setSelectedReferenceSlug] = useState<string | null>(null)
 
   const filterStatus = TAB_STATUS[activeTab]
 
   const { data: topics, isLoading, error } = useQuery({
     queryKey: ['topics', filterStatus],
     queryFn: () => getTopics(filterStatus),
+  })
+
+  const { data: factMaterials } = useQuery({
+    queryKey: ['benchmarks', 'fact_material'],
+    queryFn: () => getBenchmarks('fact_material'),
+  })
+
+  const { data: hotReferences } = useQuery({
+    queryKey: ['hot-reference-articles'],
+    queryFn: getHotReferenceArticles,
   })
 
   const { task, logs } = useTaskStream({
@@ -57,6 +74,26 @@ export default function TopicsPage() {
     onError: (t) => {
       setScraping(false)
       messageApi.error(`抓取失败：${t.error || '未知错误'}`)
+    },
+  })
+
+  const { task: workflowTask, logs: workflowLogs } = useTaskStream({
+    taskId: workflowTaskId,
+    onComplete: () => {
+      messageApi.success(workflowMode === 'brief' ? '创作简报已生成' : '文章已生成')
+      setWorkflowMode(null)
+      queryClient.invalidateQueries({ queryKey: ['topics'] })
+      queryClient.invalidateQueries({ queryKey: ['articles'] })
+      if (briefTopic) {
+        getTopics().then((items) => {
+          const fresh = items.find((item) => item.id === briefTopic.id)
+          if (fresh) setBriefTopic(fresh)
+        })
+      }
+    },
+    onError: (t) => {
+      messageApi.error(t.error || '任务失败')
+      setWorkflowMode(null)
     },
   })
 
@@ -95,6 +132,39 @@ export default function TopicsPage() {
       messageApi.error('操作失败')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  const openBriefModal = (topic: Topic) => {
+    setBriefTopic(topic)
+    setSelectedMaterialIds(topic.material_ids ?? [])
+    setSelectedReferenceSlug(topic.reference_article_slug ?? null)
+  }
+
+  const handleGenerateBrief = async () => {
+    if (!briefTopic) return
+    setWorkflowMode('brief')
+    try {
+      const { task_id } = await generateTopicBrief(briefTopic.id, {
+        material_ids: selectedMaterialIds,
+        reference_article_slug: selectedReferenceSlug,
+      })
+      setWorkflowTaskId(task_id)
+    } catch {
+      setWorkflowMode(null)
+      messageApi.error('启动简报任务失败')
+    }
+  }
+
+  const handleGenerateArticle = async () => {
+    if (!briefTopic) return
+    setWorkflowMode('article')
+    try {
+      const { task_id } = await generateTopicArticle(briefTopic.id)
+      setWorkflowTaskId(task_id)
+    } catch {
+      setWorkflowMode(null)
+      messageApi.error('启动文章生成任务失败')
     }
   }
 
@@ -172,11 +242,18 @@ export default function TopicsPage() {
       width: 140,
       render: (_: unknown, record: Topic) => {
         const busy = actionLoading === record.id
-        if (record.status === 'selected' || record.status === 'used') {
-          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
-        }
         return (
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {record.status !== 'dismissed' && (
+              <Button
+                size="small"
+                icon={<FileTextOutlined />}
+                loading={busy}
+                onClick={() => openBriefModal(record)}
+              >
+                创作简报
+              </Button>
+            )}
             {record.status !== 'dismissed' && (
               <Button
                 type="primary"
@@ -184,6 +261,7 @@ export default function TopicsPage() {
                 icon={<CheckOutlined />}
                 loading={busy}
                 onClick={() => handleSelect(record.id)}
+                disabled={record.status === 'selected' || record.status === 'used'}
               >
                 选为选题
               </Button>
@@ -354,6 +432,104 @@ export default function TopicsPage() {
           )}
         </div>
       </div>
+
+      <Modal
+        title="热点创作简报"
+        open={!!briefTopic}
+        onCancel={() => setBriefTopic(null)}
+        width={760}
+        footer={[
+          <Button key="cancel" onClick={() => setBriefTopic(null)}>关闭</Button>,
+          <Button
+            key="brief"
+            type="primary"
+            loading={workflowMode === 'brief' && workflowTask?.status !== 'completed'}
+            onClick={handleGenerateBrief}
+          >
+            生成创作简报
+          </Button>,
+          <Button
+            key="article"
+            disabled={!briefTopic?.brief}
+            loading={workflowMode === 'article' && workflowTask?.status !== 'completed'}
+            onClick={handleGenerateArticle}
+          >
+            生成文章
+          </Button>,
+        ]}
+      >
+        {briefTopic && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <Text strong>{briefTopic.title}</Text>
+              <div style={{ marginTop: 6 }}>
+                <Tag>{briefTopic.platform}</Tag>
+                {briefTopic.hot_value != null && <Tag color="orange">{briefTopic.hot_value.toLocaleString()}</Tag>}
+              </div>
+            </div>
+
+            <Select
+              mode="multiple"
+              placeholder="选择事实资料/案例/数据"
+              value={selectedMaterialIds}
+              onChange={setSelectedMaterialIds}
+              options={(factMaterials ?? []).filter((item) => item.id != null).map((item) => ({
+                value: item.id as number,
+                label: item.title,
+              }))}
+            />
+
+            <Select
+              allowClear
+              placeholder="选择爆款参考文章"
+              value={selectedReferenceSlug ?? undefined}
+              onChange={(value) => setSelectedReferenceSlug(value ?? null)}
+              options={(hotReferences ?? []).map((item) => ({
+                value: item.slug,
+                label: `${item.title} (${item.read_count})`,
+              }))}
+            />
+
+            {workflowTaskId && (
+              <div>
+                <Progress
+                  percent={workflowTask?.progress ?? 0}
+                  size="small"
+                  status={workflowTask?.status === 'failed' ? 'exception' : workflowTask?.status === 'completed' ? 'success' : 'active'}
+                />
+                {workflowLogs.length > 0 && (
+                  <div style={{ maxHeight: 90, overflowY: 'auto', background: '#0d1117', color: '#c9d1d9', padding: '6px 10px', borderRadius: 4, fontSize: 11 }}>
+                    {workflowLogs.filter(Boolean).map((line, i) => <div key={i}>{line}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {briefTopic.brief && (
+              <>
+                <Divider style={{ margin: '4px 0' }} />
+                <Text strong>{briefTopic.brief.recommended_title || '创作简报'}</Text>
+                {[
+                  ['标题角度', briefTopic.brief.title_angles],
+                  ['受众痛点', briefTopic.brief.audience_pain_points],
+                  ['文章提纲', briefTopic.brief.outline],
+                  ['可用素材', briefTopic.brief.usable_materials],
+                  ['风险提醒', briefTopic.brief.risk_notes],
+                ].map(([label, items]) => (
+                  <div key={label as string}>
+                    <Text type="secondary">{label as string}</Text>
+                    <List
+                      size="small"
+                      dataSource={(items as string[]) ?? []}
+                      renderItem={(item) => <List.Item style={{ padding: '2px 0' }}>{item}</List.Item>}
+                    />
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </>
   )
 }

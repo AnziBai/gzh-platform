@@ -16,7 +16,7 @@ import {
   message,
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
-import { getBenchmarks, createBenchmark, deleteBenchmark } from '../api/benchmarks'
+import { getBenchmarks, createBenchmark, deleteBenchmark, updateBenchmark } from '../api/benchmarks'
 import type { Benchmark } from '../api/benchmarks'
 import type { ColumnsType } from 'antd/es/table'
 
@@ -44,6 +44,7 @@ interface FormValues {
   title: string
   content: string
   platform: string
+  material_type: 'reference_article' | 'fact_material'
   source_url?: string
 }
 
@@ -54,12 +55,14 @@ export default function BenchmarksPage() {
   const [submitting, setSubmitting] = useState(false)
   const [pasteContent, setPasteContent] = useState('')
   const [pastePlatform, setPastePlatform] = useState('manual')
+  const [pasteMaterialType, setPasteMaterialType] = useState<'reference_article' | 'fact_material'>('reference_article')
+  const [materialTypeFilter, setMaterialTypeFilter] = useState<string | undefined>(undefined)
   const [form] = Form.useForm<FormValues>()
   const [messageApi, contextHolder] = message.useMessage()
 
   const { data: benchmarks, isLoading, error } = useQuery({
-    queryKey: ['benchmarks'],
-    queryFn: getBenchmarks,
+    queryKey: ['benchmarks', materialTypeFilter],
+    queryFn: () => getBenchmarks(materialTypeFilter),
   })
 
   const handleAdd = async (values: FormValues) => {
@@ -70,6 +73,7 @@ export default function BenchmarksPage() {
         content: values.content,
         platform: values.platform,
         source_url: values.source_url || undefined,
+        material_type: values.material_type,
       })
       messageApi.success('素材添加成功')
       setModalOpen(false)
@@ -107,16 +111,28 @@ export default function BenchmarksPage() {
         title: firstLine.slice(0, 100),
         content: trimmed,
         platform: pastePlatform,
+        material_type: pasteMaterialType,
       })
       messageApi.success('爆款文章已保存')
       setPasteModalOpen(false)
       setPasteContent('')
       setPastePlatform('manual')
+      setPasteMaterialType('reference_article')
       queryClient.invalidateQueries({ queryKey: ['benchmarks'] })
     } catch (e) {
       messageApi.error(`保存失败：${(e as Error).message}`)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleTypeChange = async (id: number, materialType: 'reference_article' | 'fact_material') => {
+    try {
+      await updateBenchmark(id, { material_type: materialType })
+      messageApi.success('素材类型已更新')
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] })
+    } catch (e) {
+      messageApi.error(`更新失败：${(e as Error).message}`)
     }
   }
 
@@ -129,6 +145,29 @@ export default function BenchmarksPage() {
       render: (title: string) => (
         <Text style={{ fontSize: 13 }}>{title}</Text>
       ),
+    },
+    {
+      title: '类型',
+      dataIndex: 'material_type',
+      key: 'material_type',
+      width: 120,
+      render: (materialType: Benchmark['material_type'], record: Benchmark) =>
+        record.id != null ? (
+          <Select
+            size="small"
+            value={materialType}
+            style={{ width: 108 }}
+            onChange={(value) => handleTypeChange(record.id as number, value)}
+            options={[
+              { value: 'reference_article', label: '爆款范文' },
+              { value: 'fact_material', label: '事实资料' },
+            ]}
+          />
+        ) : (
+          <Tag color={materialType === 'fact_material' ? 'blue' : 'gold'}>
+            {materialType === 'fact_material' ? '事实资料' : '爆款范文'}
+          </Tag>
+        ),
     },
     {
       title: '平台',
@@ -251,6 +290,17 @@ export default function BenchmarksPage() {
             素材列表
           </Text>
           <div style={{ display: 'flex', gap: 8 }}>
+            <Select
+              allowClear
+              placeholder="类型筛选"
+              style={{ width: 140 }}
+              value={materialTypeFilter}
+              onChange={setMaterialTypeFilter}
+              options={[
+                { value: 'reference_article', label: '爆款范文' },
+                { value: 'fact_material', label: '事实资料' },
+              ]}
+            />
             <Button
               type="primary"
               icon={<FileTextOutlined />}
@@ -307,6 +357,18 @@ export default function BenchmarksPage() {
           <Text type="secondary" style={{ fontSize: 13 }}>
             粘贴完整文章内容，标题会自动从第一行提取。保存后可在文章生成时作为参考素材。
           </Text>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>素材类型</Text>
+          <Select
+            value={pasteMaterialType}
+            onChange={setPasteMaterialType}
+            style={{ width: 180 }}
+            options={[
+              { value: 'reference_article', label: '爆款范文' },
+              { value: 'fact_material', label: '事实资料' },
+            ]}
+          />
         </div>
         <div style={{ marginBottom: 12 }}>
           <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>来源平台</Text>
@@ -377,7 +439,7 @@ export default function BenchmarksPage() {
           form={form}
           layout="vertical"
           onFinish={handleAdd}
-          initialValues={{ platform: 'manual' }}
+          initialValues={{ platform: 'manual', material_type: 'reference_article' }}
           style={{ marginTop: 8 }}
         >
           <Form.Item
@@ -396,6 +458,20 @@ export default function BenchmarksPage() {
                 { value: 'juejin', label: '掘金' },
                 { value: 'eastmoney', label: '东方财富' },
                 { value: 'xueqiu', label: '雪球' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="素材类型"
+            name="material_type"
+            initialValue="reference_article"
+            rules={[{ required: true, message: '请选择素材类型' }]}
+          >
+            <Select
+              options={[
+                { value: 'reference_article', label: '爆款范文' },
+                { value: 'fact_material', label: '事实资料' },
               ]}
             />
           </Form.Item>

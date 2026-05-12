@@ -69,6 +69,7 @@ class Benchmark(Base):
     structure_type = Column(String)
     keywords = Column(Text)  # JSON array
     relevance_score = Column(Float)
+    material_type = Column(String, nullable=False, default="reference_article")
 
     created_at = Column(DateTime, default=utcnow)
 
@@ -85,6 +86,10 @@ class Topic(Base):
     relevance_score = Column(Float)
     relevance_reason = Column(String)
     status = Column(String, default="new")  # new | selected | used | dismissed
+    brief_json = Column(Text)
+    material_ids_json = Column(Text)
+    reference_article_slug = Column(String)
+    generated_article_id = Column(Integer, ForeignKey("articles.id"), nullable=True)
 
     discovered_at = Column(DateTime, default=utcnow)
     created_at = Column(DateTime, default=utcnow)

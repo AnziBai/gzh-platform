@@ -48,6 +48,21 @@ def test_ai_settings():
         return error_response(f"AI 连接测试失败: {e}", 500)
 
 
+@settings_bp.route("/settings/bootstrap", methods=["POST"])
+def bootstrap_settings():
+    from config import Config
+    from services.environment_check_service import deployment_diagnostics
+    from services.settings_service import bootstrap_directories
+
+    body = request.get_json(silent=True) or {}
+    try:
+        result = bootstrap_directories(Config, body.get("root_dir"))
+        result["diagnostics"] = deployment_diagnostics(Config)
+        return success_response(result)
+    except Exception as e:
+        return error_response(f"首次部署向导失败: {e}", 500)
+
+
 @settings_bp.route("/settings/test-wechat", methods=["POST"])
 def test_wechat_settings():
     from config import Config

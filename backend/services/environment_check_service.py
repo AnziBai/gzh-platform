@@ -67,6 +67,14 @@ def deployment_diagnostics(config) -> dict:
         "设置 ARTICLES_DIR，或创建该目录用于保存生成文章。",
     ))
 
+    benchmarks_dir = Path(getattr(config, "BENCHMARKS_DIR", Path(config.ARTICLES_DIR).parent / "benchmarks"))
+    checks.append(_status(
+        benchmarks_dir.exists(),
+        "素材目录",
+        str(benchmarks_dir),
+        "设置 BENCHMARKS_DIR，或通过首次部署向导创建素材目录。",
+    ))
+
     writer_spec, writer_source = load_writer_spec(config)
     auditor_spec, auditor_source = load_auditor_spec(config)
     checks.append(_status(bool(writer_spec.strip()), "写作规范", writer_source))

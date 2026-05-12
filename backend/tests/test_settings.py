@@ -108,6 +108,20 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertFalse(data["ok"])
         self.assertEqual(data["checks"][0]["label"], "Git")
 
+    def test_bootstrap_settings_creates_directories_and_returns_diagnostics(self):
+        with (
+            patch("services.settings_service.bootstrap_directories", return_value={"created": {"ARTICLES_DIR": "C:/content/articles/published"}, "next_steps": []}) as bootstrap,
+            patch("services.environment_check_service.deployment_diagnostics", return_value={"ok": True, "checks": []}) as diagnostics,
+        ):
+            response = self.client.post("/api/settings/bootstrap", json={"root_dir": "C:/content"})
+
+        self.assertEqual(response.status_code, 200)
+        bootstrap.assert_called_once()
+        diagnostics.assert_called_once()
+        data = response.get_json()["data"]
+        self.assertEqual(data["created"]["ARTICLES_DIR"], "C:/content/articles/published")
+        self.assertTrue(data["diagnostics"]["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 import os
 from flask import Blueprint, request
 from database import SessionLocal
-from models import Article
+from models import Article, ArticleStat
 from services.article_service import scan_articles_dir, parse_frontmatter
 from utils import success_response, error_response
 
@@ -80,14 +80,33 @@ def _latest_stat(article):
 
 @articles_bp.route("/articles/hot-references")
 def hot_reference_articles():
+    from sqlalchemy import func
+
     db = SessionLocal()
     try:
         result = []
-        for article in db.query(Article).all():
-            latest_stat = _latest_stat(article)
-            read_count = latest_stat.read_count if latest_stat else 0
-            if read_count <= 500:
-                continue
+        latest_stats = (
+            db.query(
+                ArticleStat.article_id.label("article_id"),
+                func.max(ArticleStat.fetched_at).label("latest_fetched_at"),
+            )
+            .group_by(ArticleStat.article_id)
+            .subquery()
+        )
+        rows = (
+            db.query(Article, ArticleStat.read_count)
+            .join(latest_stats, latest_stats.c.article_id == Article.id)
+            .join(
+                ArticleStat,
+                (ArticleStat.article_id == latest_stats.c.article_id)
+                & (ArticleStat.fetched_at == latest_stats.c.latest_fetched_at),
+            )
+            .filter(ArticleStat.read_count > 500)
+            .order_by(ArticleStat.read_count.desc())
+            .limit(100)
+            .all()
+        )
+        for article, read_count in rows:
             if not article.file_path or not os.path.exists(article.file_path):
                 continue
             result.append({
@@ -96,7 +115,6 @@ def hot_reference_articles():
                 "read_count": read_count,
             })
 
-        result.sort(key=lambda item: item["read_count"], reverse=True)
         return success_response(result)
     except Exception as e:
         return error_response(str(e), 500)

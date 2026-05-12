@@ -3,6 +3,7 @@ import unittest
 import uuid
 from pathlib import Path
 from unittest.mock import patch
+from sqlalchemy import create_engine, inspect, text
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
@@ -24,6 +25,20 @@ class DatabaseInitTest(unittest.TestCase):
 
         self.assertTrue(db_path.parent.is_dir())
         create_all.assert_called_once_with(bind=database.engine)
+
+    def test_ensure_columns_backfills_existing_sqlite_tables(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE topics (id INTEGER PRIMARY KEY, title VARCHAR)"))
+
+        with patch("database.engine", engine):
+            database._ensure_topic_workflow_columns()
+
+        columns = {column["name"] for column in inspect(engine).get_columns("topics")}
+        self.assertIn("brief_json", columns)
+        self.assertIn("material_ids_json", columns)
+        self.assertIn("reference_article_slug", columns)
+        self.assertIn("generated_article_id", columns)
 
 
 if __name__ == "__main__":

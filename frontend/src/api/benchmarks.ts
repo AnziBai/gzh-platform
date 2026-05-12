@@ -9,11 +9,13 @@ export interface Benchmark {
   file_path: string | null
   structure_type: string | null
   relevance_score: number | null
+  material_type: 'reference_article' | 'fact_material'
   created_at: string | null
 }
 
-export async function getBenchmarks(): Promise<Benchmark[]> {
-  const response = await client.get<ApiResponse<Benchmark[]>>('/benchmarks')
+export async function getBenchmarks(materialType?: string): Promise<Benchmark[]> {
+  const params = materialType ? { material_type: materialType } : {}
+  const response = await client.get<ApiResponse<Benchmark[]>>('/benchmarks', { params })
   return response.data.data
 }
 
@@ -22,6 +24,7 @@ export async function createBenchmark(data: {
   content: string
   platform?: string
   source_url?: string
+  material_type?: 'reference_article' | 'fact_material'
 }): Promise<Benchmark> {
   const response = await client.post<ApiResponse<Benchmark>>('/benchmarks', data)
   return response.data.data
@@ -29,4 +32,12 @@ export async function createBenchmark(data: {
 
 export async function deleteBenchmark(id: number): Promise<void> {
   await client.delete(`/benchmarks/${id}`)
+}
+
+export async function updateBenchmark(
+  id: number,
+  data: Partial<Pick<Benchmark, 'title' | 'platform' | 'source_url' | 'material_type'>>,
+): Promise<Benchmark> {
+  const response = await client.put<ApiResponse<Benchmark>>(`/benchmarks/${id}`, data)
+  return response.data.data
 }
