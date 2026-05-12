@@ -191,7 +191,16 @@ export default function SettingsPage() {
   }
 
   const openWizard = () => {
-    applyWizardPreset(wizardPreset)
+    const currentPreset = settings.data?.ai_writer.preset_provider
+    const matchedPreset = presets.data?.find((preset) => {
+      if (currentPreset && preset.key === currentPreset) return true
+      if (!currentPreset && settings.data?.ai_writer.base_url && preset.base_url === settings.data.ai_writer.base_url) return true
+      return false
+    })
+    applyWizardPreset(matchedPreset?.key ?? wizardPreset)
+    if (settings.data?.ai_writer.model) setWizardModel(settings.data.ai_writer.model)
+    if (settings.data?.ai_writer.base_url) setWizardBaseUrl(settings.data.ai_writer.base_url)
+    if (settings.data?.ai_writer.extra_body_json) setWizardExtraBody(settings.data.ai_writer.extra_body_json)
     setWizardOpen(true)
     setWizardStep(0)
     setWizardApiKey('')
