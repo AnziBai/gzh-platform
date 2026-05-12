@@ -54,7 +54,11 @@ export async function uploadKnowledgeFile(file: File): Promise<KnowledgeFile> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await client.post<ApiResponse<KnowledgeFile>>('/knowledge/files', formData)
+  const response = await client.post<ApiResponse<KnowledgeFile>>('/knowledge/files', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
   return response.data.data
 }
 

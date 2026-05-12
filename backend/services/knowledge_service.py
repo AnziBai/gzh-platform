@@ -336,6 +336,7 @@ def _expand_token(token: str) -> list[str]:
 
 
 def _normalize_text(text: str) -> str:
+    text = text.lstrip("\ufeff")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
