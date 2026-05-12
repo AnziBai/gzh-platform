@@ -10,7 +10,7 @@ import {
   SaveOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { bootstrapSettings, getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
+import { bootstrapSettings, getModelPresets, getSettings, getSettingsDiagnostics, testAiSettings, testWechatSettings, updateSettings } from '../api/settings'
 import type { SettingsUpdate } from '../api/settings'
 
 const { Text } = Typography
@@ -22,7 +22,12 @@ interface SettingsFormValues {
   ai_base_url?: string
   ai_api_key?: string
   ai_model?: string
+  ai_preset_provider?: string
+  ai_extra_body_json?: string
   claude_bin?: string
+  search_provider?: string
+  search_base_url?: string
+  search_api_key?: string
 }
 
 export default function SettingsPage() {
@@ -41,6 +46,11 @@ export default function SettingsPage() {
     queryFn: getSettingsDiagnostics,
   })
 
+  const { data: modelPresets } = useQuery({
+    queryKey: ['model-presets'],
+    queryFn: getModelPresets,
+  })
+
   useEffect(() => {
     if (!data) return
     form.setFieldsValue({
@@ -50,7 +60,12 @@ export default function SettingsPage() {
       ai_base_url: data.ai_writer.base_url,
       ai_api_key: '',
       ai_model: data.ai_writer.model,
+      ai_preset_provider: data.ai_writer.preset_provider,
+      ai_extra_body_json: data.ai_writer.extra_body_json,
       claude_bin: data.ai_writer.claude_bin,
+      search_provider: data.search.provider,
+      search_base_url: data.search.base_url,
+      search_api_key: '',
     })
   }, [data, form])
 
@@ -107,7 +122,13 @@ export default function SettingsPage() {
         provider: values.ai_provider,
         base_url: values.ai_base_url,
         model: values.ai_model,
+        preset_provider: values.ai_preset_provider,
+        extra_body_json: values.ai_extra_body_json,
         claude_bin: values.claude_bin,
+      },
+      search: {
+        provider: values.search_provider,
+        base_url: values.search_base_url,
       },
     }
     if (values.wechat_app_secret?.trim()) {
@@ -116,7 +137,22 @@ export default function SettingsPage() {
     if (values.ai_api_key?.trim()) {
       payload.ai_writer!.api_key = values.ai_api_key.trim()
     }
+    if (values.search_api_key?.trim()) {
+      payload.search!.api_key = values.search_api_key.trim()
+    }
     saveMutation.mutate(payload)
+  }
+
+  const applyPreset = (presetKey?: string) => {
+    const preset = modelPresets?.find((item) => item.key === presetKey)
+    if (!preset) return
+    form.setFieldsValue({
+      ai_provider: preset.provider,
+      ai_preset_provider: preset.key,
+      ai_base_url: preset.base_url,
+      ai_model: preset.recommended_models[0],
+      ai_extra_body_json: preset.extra_body_example ? JSON.stringify(preset.extra_body_example, null, 2) : '',
+    })
   }
 
   if (isLoading) {
@@ -336,6 +372,17 @@ export default function SettingsPage() {
               </Tag>
             }
           >
+            <Form.Item label="国内模型预设" name="ai_preset_provider">
+              <Select
+                allowClear
+                placeholder="选择后自动填入 Base URL 和推荐模型"
+                onChange={applyPreset}
+                options={(modelPresets ?? []).map((preset) => ({
+                  value: preset.key,
+                  label: preset.name,
+                }))}
+              />
+            </Form.Item>
             <Form.Item label="Provider" name="ai_provider">
               <Select
                 options={[
@@ -356,6 +403,13 @@ export default function SettingsPage() {
             <Form.Item label="Model" name="ai_model">
               <Input placeholder="例如 deepseek-chat / gpt-4.1 / glm-4-plus" />
             </Form.Item>
+            <Form.Item label="AI_EXTRA_BODY_JSON" name="ai_extra_body_json">
+              <Input.TextArea
+                rows={4}
+                placeholder={'例如 {"enable_thinking": false}，留空则不透传'}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            </Form.Item>
             <Button
               icon={<ThunderboltOutlined />}
               onClick={() => aiTestMutation.mutate()}
@@ -363,6 +417,32 @@ export default function SettingsPage() {
             >
               测试 AI 连接
             </Button>
+          </Card>
+
+          <Card
+            size="small"
+            title="搜索与热点源"
+            style={{ marginBottom: 16, borderRadius: 8 }}
+            extra={
+              <Tag color={data?.search.api_key_configured ? 'green' : 'default'}>
+                {data?.search.api_key_configured ? 'Search Key 已配置' : 'Search Key 未配置'}
+              </Tag>
+            }
+          >
+            <Form.Item label="SEARCH_PROVIDER" name="search_provider">
+              <Select
+                allowClear
+                options={[
+                  { value: 'custom', label: '自定义搜索 API' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label="SEARCH_BASE_URL" name="search_base_url">
+              <Input placeholder="返回 items/results，且每条结果包含 url/link/source_url" />
+            </Form.Item>
+            <Form.Item label="SEARCH_API_KEY" name="search_api_key">
+              <Input.Password placeholder="留空则不修改现有 Search Key" autoComplete="new-password" />
+            </Form.Item>
           </Card>
 
           <Space>

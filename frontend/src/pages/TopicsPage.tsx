@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Button, Tag, Spin, Alert, Empty, Typography, Table, Progress,
+  Button, Tag, Spin, Alert, Empty, Typography, Table, Progress, Input,
   Tabs, message, Modal, Select, List, Divider,
 } from 'antd'
 import { FireOutlined, CheckOutlined, StopOutlined, FileTextOutlined } from '@ant-design/icons'
@@ -25,6 +25,7 @@ const platformConfig: Record<string, { color: string; label: string }> = {
   sina:      { color: 'orange',  label: '新浪财经' },
   eastmoney: { color: 'blue',    label: '东方财富' },
   xueqiu:    { color: 'green',   label: '雪球' },
+  aihot:     { color: 'purple',  label: 'AI HOT' },
 }
 
 const TAB_STATUS: Record<string, string | undefined> = {
@@ -46,6 +47,11 @@ export default function TopicsPage() {
   const [briefTopic, setBriefTopic] = useState<Topic | null>(null)
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>([])
   const [selectedReferenceSlug, setSelectedReferenceSlug] = useState<string | null>(null)
+  const [sourceGroup, setSourceGroup] = useState<'finance' | 'aihot' | 'all'>('finance')
+  const [scrapeMode, setScrapeMode] = useState<'selected' | 'all'>('selected')
+  const [sinceHours, setSinceHours] = useState(24)
+  const [category, setCategory] = useState<string | undefined>()
+  const [keyword, setKeyword] = useState('')
 
   const filterStatus = TAB_STATUS[activeTab]
 
@@ -101,7 +107,14 @@ export default function TopicsPage() {
     setScraping(true)
     setTaskId(null)
     try {
-      const { task_id } = await scrapeTopics(platform)
+      const { task_id } = await scrapeTopics({
+        platform,
+        source_group: sourceGroup,
+        mode: scrapeMode,
+        category,
+        since_hours: sinceHours,
+        keyword: keyword.trim() || undefined,
+      })
       setTaskId(task_id)
     } catch {
       setScraping(false)
@@ -317,6 +330,60 @@ export default function TopicsPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FireOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
             <Title level={5} style={{ margin: 0 }}>金融热点选题</Title>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <Select
+              value={sourceGroup}
+              style={{ width: 140 }}
+              onChange={setSourceGroup}
+              options={[
+                { value: 'finance', label: '财经热点' },
+                { value: 'aihot', label: 'AI 热点' },
+                { value: 'all', label: '全部来源' },
+              ]}
+            />
+            <Select
+              value={scrapeMode}
+              style={{ width: 120 }}
+              onChange={setScrapeMode}
+              options={[
+                { value: 'selected', label: '精选' },
+                { value: 'all', label: '全部' },
+              ]}
+            />
+            <Select
+              value={sinceHours}
+              style={{ width: 140 }}
+              onChange={setSinceHours}
+              options={[
+                { value: 6, label: '最近 6 小时' },
+                { value: 24, label: '最近 24 小时' },
+                { value: 72, label: '最近 3 天' },
+              ]}
+            />
+            <Select
+              allowClear
+              placeholder="分类"
+              style={{ width: 140 }}
+              value={category}
+              onChange={setCategory}
+              options={[
+                { value: 'ai', label: 'AI' },
+                { value: 'finance', label: '财经' },
+                { value: 'tech', label: '科技' },
+                { value: 'business', label: '商业' },
+              ]}
+            />
+            <Input.Search
+              allowClear
+              placeholder="关键词"
+              style={{ width: 180 }}
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              onSearch={() => handleScrape('all')}
+              disabled={scraping}
+            />
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

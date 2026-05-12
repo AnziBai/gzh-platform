@@ -21,7 +21,14 @@ class Config:
     AI_BASE_URL = os.getenv("AI_BASE_URL", "")
     AI_API_KEY = os.getenv("AI_API_KEY", "")
     AI_MODEL = os.getenv("AI_MODEL", "")
+    AI_PRESET_PROVIDER = os.getenv("AI_PRESET_PROVIDER", "")
+    AI_EXTRA_BODY_JSON = os.getenv("AI_EXTRA_BODY_JSON", "")
     CLAUDE_BIN = os.getenv("CLAUDE_BIN", "")
+
+    SEARCH_PROVIDER = os.getenv("SEARCH_PROVIDER", "")
+    SEARCH_API_KEY = os.getenv("SEARCH_API_KEY", "")
+    SEARCH_BASE_URL = os.getenv("SEARCH_BASE_URL", "")
+    HOT_SOURCE_PRESETS_JSON = os.getenv("HOT_SOURCE_PRESETS_JSON", "")
 
     FLASK_PORT = int(os.getenv("FLASK_PORT", "5001"))
     FLASK_DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"

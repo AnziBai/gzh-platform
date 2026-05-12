@@ -32,9 +32,19 @@ export async function getTopics(status?: string): Promise<Topic[]> {
   return response.data.data
 }
 
-export async function scrapeTopics(platform?: string): Promise<{ task_id: string }> {
+export interface ScrapeTopicsParams {
+  platform?: string
+  source_group?: 'finance' | 'aihot' | 'all'
+  mode?: 'selected' | 'all'
+  category?: string
+  since_hours?: number
+  keyword?: string
+}
+
+export async function scrapeTopics(params?: string | ScrapeTopicsParams): Promise<{ task_id: string }> {
+  const payload = typeof params === 'string' ? { platform: params } : (params ?? {})
   const response = await client.post<ApiResponse<{ task_id: string }>>('/topics/scrape', {
-    platform,
+    ...payload,
   })
   return response.data.data
 }

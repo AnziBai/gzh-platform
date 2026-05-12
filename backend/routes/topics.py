@@ -31,9 +31,14 @@ def scrape_topics():
 
     body = request.get_json(silent=True) or {}
     platform = body.get("platform", "toutiao")
+    source_group = body.get("source_group", "finance")
+    mode = body.get("mode", "selected")
+    category = body.get("category")
+    since_hours = body.get("since_hours")
+    keyword = body.get("keyword")
 
-    task_id = task_manager.create_task("scrape", meta={"platform": platform})
-    task_manager.run(task_id, run_scrape, platform)
+    task_id = task_manager.create_task("scrape", meta={"platform": platform, "source_group": source_group})
+    task_manager.run(task_id, run_scrape, platform, source_group, mode, category, since_hours, keyword)
     return success_response({"task_id": task_id})
 
 

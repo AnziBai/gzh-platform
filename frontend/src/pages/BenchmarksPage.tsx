@@ -17,7 +17,9 @@ import {
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
 import { getBenchmarks, createBenchmark, deleteBenchmark, updateBenchmark } from '../api/benchmarks'
+import { approveMaterialCandidate, getMaterialCandidates, rejectMaterialCandidate } from '../api/materials'
 import type { Benchmark } from '../api/benchmarks'
+import type { MaterialCandidate } from '../api/materials'
 import type { ColumnsType } from 'antd/es/table'
 
 const { Text } = Typography
@@ -63,6 +65,11 @@ export default function BenchmarksPage() {
   const { data: benchmarks, isLoading, error } = useQuery({
     queryKey: ['benchmarks', materialTypeFilter],
     queryFn: () => getBenchmarks(materialTypeFilter),
+  })
+
+  const { data: candidates } = useQuery({
+    queryKey: ['material-candidates', 'candidate'],
+    queryFn: () => getMaterialCandidates('candidate'),
   })
 
   const handleAdd = async (values: FormValues) => {
@@ -135,6 +142,82 @@ export default function BenchmarksPage() {
       messageApi.error(`更新失败：${(e as Error).message}`)
     }
   }
+
+  const handleApproveCandidate = async (candidate: MaterialCandidate, materialType?: 'reference_article' | 'fact_material') => {
+    try {
+      await approveMaterialCandidate(candidate.id, materialType ?? candidate.suggested_material_type)
+      messageApi.success('候选素材已入库')
+      queryClient.invalidateQueries({ queryKey: ['material-candidates'] })
+      queryClient.invalidateQueries({ queryKey: ['benchmarks'] })
+    } catch (e) {
+      messageApi.error(`入库失败：${(e as Error).message}`)
+    }
+  }
+
+  const handleRejectCandidate = async (id: number) => {
+    try {
+      await rejectMaterialCandidate(id)
+      messageApi.success('候选素材已忽略')
+      queryClient.invalidateQueries({ queryKey: ['material-candidates'] })
+    } catch (e) {
+      messageApi.error(`忽略失败：${(e as Error).message}`)
+    }
+  }
+
+  const candidateColumns: ColumnsType<MaterialCandidate> = [
+    {
+      title: '候选素材',
+      dataIndex: 'title',
+      key: 'title',
+      ellipsis: true,
+      render: (title: string, record) => (
+        <div>
+          <Text style={{ fontSize: 13 }}>{title}</Text>
+          {record.classification_reason && (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+              {record.classification_reason}
+            </Text>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: '建议类型',
+      dataIndex: 'suggested_material_type',
+      key: 'suggested_material_type',
+      width: 120,
+      render: (type: MaterialCandidate['suggested_material_type']) => (
+        <Tag color={type === 'fact_material' ? 'blue' : 'gold'}>
+          {type === 'fact_material' ? '事实资料' : '爆款范文'}
+        </Tag>
+      ),
+    },
+    {
+      title: '来源',
+      dataIndex: 'platform',
+      key: 'platform',
+      width: 120,
+      render: (platform: string) => <Tag>{platform}</Tag>,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 180,
+      render: (_: unknown, record) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Button size="small" type="primary" onClick={() => handleApproveCandidate(record)}>
+            入库
+          </Button>
+          <Button size="small" onClick={() => handleApproveCandidate(record, record.suggested_material_type === 'fact_material' ? 'reference_article' : 'fact_material')}>
+            改类入库
+          </Button>
+          <Button size="small" danger onClick={() => handleRejectCandidate(record.id)}>
+            忽略
+          </Button>
+        </div>
+      ),
+    },
+  ]
 
   const columns: ColumnsType<Benchmark> = [
     {
@@ -270,6 +353,30 @@ export default function BenchmarksPage() {
       </div>
 
       {/* 列表卡片 */}
+      {(candidates?.length ?? 0) > 0 && (
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 8,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+            padding: 16,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text strong style={{ fontSize: 15 }}>AI 自动收集候选</Text>
+            <Tag color="blue">{candidates?.length ?? 0} 条待确认</Tag>
+          </div>
+          <Table<MaterialCandidate>
+            dataSource={candidates ?? []}
+            columns={candidateColumns}
+            rowKey="id"
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            size="small"
+          />
+        </div>
+      )}
+
       <div
         style={{
           background: '#fff',

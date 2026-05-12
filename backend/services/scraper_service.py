@@ -228,34 +228,37 @@ def fetch_sina_hot(limit: int = 30) -> list[dict]:
         return []
 
 
-def run_scrape(task_id: str, platform: str) -> dict:
+def run_scrape(
+    task_id: str,
+    platform: str = "toutiao",
+    source_group: str = "finance",
+    mode: str = "selected",
+    category: str | None = None,
+    since_hours: int | None = None,
+    keyword: str | None = None,
+) -> dict:
     """
     TaskManager 调用入口。
 
     流程：抓取 → 打分 → 过滤（只保留金融相关） → 存 DB → 推 SSE 日志
     返回 {"saved": int, "platform": str}
     """
-    task_manager.push_log(task_id, f"开始抓取 {platform} 热点…", progress=5)
+    task_manager.push_log(task_id, f"开始抓取 {source_group} 热点…", progress=5)
 
-    # 1. 抓取
-    if platform == "toutiao":
-        items = fetch_toutiao_hot(limit=30)
-    elif platform == "eastmoney":
-        items = fetch_eastmoney_hot(limit=30)
-    elif platform == "xueqiu":
-        items = fetch_xueqiu_hot(limit=30)
-    elif platform == "sina":
-        items = fetch_sina_hot(limit=30)
-    elif platform == "all":
-        items = []
-        for name, fetcher in [("toutiao", fetch_toutiao_hot), ("sina", fetch_sina_hot), ("eastmoney", fetch_eastmoney_hot), ("xueqiu", fetch_xueqiu_hot)]:
-            task_manager.push_log(task_id, f"抓取 {name}…", progress=10)
-            batch = fetcher(limit=20)
-            items.extend(batch)
-    else:
-        logger.warning("未支持的平台: %s", platform)
-        task_manager.push_log(task_id, f"不支持的平台: {platform}", progress=100)
-        return {"saved": 0, "platform": platform}
+    from services.hot_source_service import fetch_hot_items
+
+    hot_items, source_errors = fetch_hot_items(
+        source_group=source_group,
+        platform=platform,
+        mode=mode,
+        category=category,
+        since_hours=since_hours,
+        keyword=keyword,
+        limit=80,
+    )
+    for err in source_errors:
+        task_manager.push_log(task_id, err)
+    items = [item.to_topic_dict() for item in hot_items]
 
     if not items:
         task_manager.push_log(task_id, "抓取结果为空，任务结束", progress=100)
@@ -268,8 +271,12 @@ def run_scrape(task_id: str, platform: str) -> dict:
     scores = score_relevance(titles)
     task_manager.push_log(task_id, "相关性打分完成", progress=60)
 
-    # 3. 过滤：只保留金融交易相关的
-    filtered = [(it, sc) for it, sc in zip(items, scores) if sc >= _MIN_RELEVANCE_SCORE]
+    # 3. 过滤：财经热点保留金融相关；AI 热点天然相关
+    filtered = [
+        (it, sc)
+        for it, sc in zip(items, scores)
+        if source_group == "ai" or it.get("platform") == "aihot" or sc >= _MIN_RELEVANCE_SCORE
+    ]
     skipped = len(items) - len(filtered)
     task_manager.push_log(task_id, f"过滤后保留 {len(filtered)} 条金融相关（过滤掉 {skipped} 条无关）", progress=75)
 
@@ -281,8 +288,18 @@ def run_scrape(task_id: str, platform: str) -> dict:
     filtered_scores = [sc for _, sc in filtered]
 
     # 4. 存 DB
-    saved = _save_topics(filtered_items, filtered_scores)
-    task_manager.push_log(task_id, f"已入库 {saved} 条（去重后）", progress=90)
+    topic_ids = _save_topics(filtered_items, filtered_scores)
+    saved_ids = [topic_id for topic_id in topic_ids if topic_id is not None]
+    saved = len(saved_ids)
+    task_manager.push_log(task_id, f"已入库 {saved} 条（去重后）", progress=88)
+
+    try:
+        from services.material_collection_service import collect_from_hot_items
+
+        material_result = collect_from_hot_items(task_id, filtered_items, topic_ids)
+        task_manager.push_log(task_id, f"素材候选已生成 {material_result['created']} 条", progress=96)
+    except Exception as exc:
+        task_manager.push_log(task_id, f"素材候选生成失败，不影响热点入库: {exc}", progress=96)
 
     task_manager.push_log(task_id, "抓取任务完成", progress=100)
     return {"saved": saved, "platform": platform}
@@ -371,9 +388,9 @@ def _parse_feed(raw_list: list, limit: int) -> list[dict]:
 
 # ─── 私有：DB ─────────────────────────────────────────────────────────────────
 
-def _save_topics(items: list[dict], scores: list[float]) -> int:
+def _save_topics(items: list[dict], scores: list[float]) -> list[int | None]:
     """将热榜条目写入 topics 表，按 title+platform 去重（已有的跳过）。"""
-    saved = 0
+    saved_ids: list[int | None] = []
     db = SessionLocal()
     try:
         for item, score in zip(items, scores):
@@ -383,6 +400,7 @@ def _save_topics(items: list[dict], scores: list[float]) -> int:
                 .first()
             )
             if exists:
+                saved_ids.append(None)
                 continue
             topic = Topic(
                 title=item["title"],
@@ -393,14 +411,15 @@ def _save_topics(items: list[dict], scores: list[float]) -> int:
                 status="new",
             )
             db.add(topic)
-            saved += 1
+            db.flush()
+            saved_ids.append(topic.id)
         db.commit()
     except Exception as e:
         db.rollback()
         logger.error("写入 topics 失败: %s", e)
     finally:
         db.close()
-    return saved
+    return saved_ids
 
 
 # ─── 工具 ─────────────────────────────────────────────────────────────────────

@@ -11,7 +11,14 @@ export interface Settings {
     base_url: string
     api_key_configured: boolean
     model: string
+    preset_provider: string
+    extra_body_json: string
     claude_bin: string
+  }
+  search: {
+    provider: string
+    base_url: string
+    api_key_configured: boolean
   }
   directories: {
     gzhpublisher_root: string
@@ -32,7 +39,14 @@ export interface SettingsUpdate {
     base_url?: string
     api_key?: string
     model?: string
+    preset_provider?: string
+    extra_body_json?: string
     claude_bin?: string
+  }
+  search?: {
+    provider?: string
+    api_key?: string
+    base_url?: string
   }
 }
 
@@ -104,5 +118,20 @@ export async function bootstrapSettings(rootDir?: string): Promise<{
     next_steps: string[]
     diagnostics: DiagnosticsResult
   }>>('/settings/bootstrap', { root_dir: rootDir })
+  return response.data.data
+}
+
+export interface ModelPreset {
+  key: string
+  name: string
+  provider: string
+  base_url: string
+  recommended_models: string[]
+  description: string
+  extra_body_example?: Record<string, unknown>
+}
+
+export async function getModelPresets(): Promise<ModelPreset[]> {
+  const response = await client.get<ApiResponse<ModelPreset[]>>('/settings/model-presets')
   return response.data.data
 }

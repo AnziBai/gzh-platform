@@ -52,12 +52,14 @@ export async function getArticleBySlug(slug: string): Promise<Article> {
 export async function generateArticle(
   topic: string,
   benchmarkSlug?: string,
-  referenceArticleSlug?: string
+  referenceArticleSlug?: string,
+  materialIds?: number[],
 ): Promise<TaskResponse> {
   const response = await client.post<ApiResponse<TaskResponse>>('/articles/generate', {
     topic,
     benchmark_slug: benchmarkSlug,
     reference_article_slug: referenceArticleSlug,
+    material_ids: materialIds,
   })
   return response.data.data
 }
@@ -69,6 +71,14 @@ export async function getHotReferenceArticles(): Promise<HotReferenceArticle[]> 
 
 export async function publishArticle(slug: string): Promise<TaskResponse> {
   const response = await client.post<ApiResponse<TaskResponse>>(`/articles/${encodeURIComponent(slug)}/publish`)
+  return response.data.data
+}
+
+export async function rewriteForPublish(slug: string, referenceBenchmarkId?: number): Promise<TaskResponse> {
+  const response = await client.post<ApiResponse<TaskResponse>>(
+    `/articles/${encodeURIComponent(slug)}/rewrite-for-publish`,
+    { reference_benchmark_id: referenceBenchmarkId },
+  )
   return response.data.data
 }
 

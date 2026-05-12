@@ -10,6 +10,10 @@ export interface Benchmark {
   structure_type: string | null
   relevance_score: number | null
   material_type: 'reference_article' | 'fact_material'
+  source_kind: string | null
+  source_hash: string | null
+  classification_reason: string | null
+  approved_from_candidate_id: number | null
   created_at: string | null
 }
 
@@ -39,5 +43,16 @@ export async function updateBenchmark(
   data: Partial<Pick<Benchmark, 'title' | 'platform' | 'source_url' | 'material_type'>>,
 ): Promise<Benchmark> {
   const response = await client.put<ApiResponse<Benchmark>>(`/benchmarks/${id}`, data)
+  return response.data.data
+}
+
+export async function recommendBenchmarks(topic: string): Promise<{
+  fact_materials: Benchmark[]
+  reference_articles: Benchmark[]
+}> {
+  const response = await client.get<ApiResponse<{
+    fact_materials: Benchmark[]
+    reference_articles: Benchmark[]
+  }>>('/benchmarks/recommend', { params: { topic } })
   return response.data.data
 }

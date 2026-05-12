@@ -70,8 +70,35 @@ class Benchmark(Base):
     keywords = Column(Text)  # JSON array
     relevance_score = Column(Float)
     material_type = Column(String, nullable=False, default="reference_article")
+    source_kind = Column(String)
+    source_hash = Column(String)
+    classification_reason = Column(Text)
+    approved_from_candidate_id = Column(Integer, ForeignKey("material_candidates.id"), nullable=True)
 
     created_at = Column(DateTime, default=utcnow)
+
+
+class MaterialCandidate(Base):
+    __tablename__ = "material_candidates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False)
+    content = Column(Text)
+    source_url = Column(String)
+    platform = Column(String, nullable=False, default="unknown")
+
+    suggested_material_type = Column(String, nullable=False, default="fact_material")
+    status = Column(String, nullable=False, default="candidate")  # candidate | approved | rejected | failed
+    confidence = Column(Float)
+    classification_reason = Column(Text)
+
+    source_kind = Column(String, nullable=False, default="hot_topic")
+    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)
+    article_id = Column(Integer, ForeignKey("articles.id"), nullable=True)
+    source_hash = Column(String, nullable=False)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class Topic(Base):

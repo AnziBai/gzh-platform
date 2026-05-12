@@ -44,6 +44,23 @@ def list_benchmarks():
         db.close()
 
 
+@benchmarks_bp.route("/benchmarks/recommend")
+def recommend_benchmarks():
+    topic = (request.args.get("topic") or "").strip().lower()
+    db = SessionLocal()
+    try:
+        records = db.query(Benchmark).order_by(Benchmark.created_at.desc()).limit(300).all()
+        scored = [(_recommend_score(b, topic), b) for b in records]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        facts = [_serialize(b) for score, b in scored if score >= 0 and (b.material_type or "reference_article") == "fact_material"][:8]
+        references = [_serialize(b) for score, b in scored if score >= 0 and (b.material_type or "reference_article") == "reference_article"][:5]
+        return success_response({"fact_materials": facts, "reference_articles": references})
+    except Exception as e:
+        return error_response(str(e), 500)
+    finally:
+        db.close()
+
+
 @benchmarks_bp.route("/benchmarks", methods=["POST"])
 def create_benchmark():
     from services.article_service import parse_frontmatter
@@ -81,12 +98,16 @@ def create_benchmark():
         with open(fpath, "w", encoding="utf-8") as f:
             f.write(md_content)
 
+        from services.material_collection_service import source_hash
+
         bm = Benchmark(
             title=title,
             platform=platform,
             source_url=source_url or None,
             file_path=fpath,
             material_type=material_type,
+            source_kind="manual",
+            source_hash=source_hash("manual", material_type, source_url or title, content[:200]),
         )
         db.add(bm)
         db.commit()
@@ -176,6 +197,10 @@ def _serialize(b: Benchmark) -> dict:
         "structure_type": b.structure_type,
         "relevance_score": b.relevance_score,
         "material_type": b.material_type or "reference_article",
+        "source_kind": b.source_kind,
+        "source_hash": b.source_hash,
+        "classification_reason": b.classification_reason,
+        "approved_from_candidate_id": b.approved_from_candidate_id,
         "created_at": b.created_at.isoformat() if b.created_at else None,
     }
 
@@ -194,5 +219,22 @@ def _serialize_fs(fpath: str, fname: str) -> dict:
         "structure_type": fm.get("structure_type"),
         "relevance_score": None,
         "material_type": fm.get("material_type", "reference_article"),
+        "source_kind": fm.get("source_kind", "filesystem"),
+        "source_hash": fm.get("source_hash"),
+        "classification_reason": fm.get("classification_reason"),
+        "approved_from_candidate_id": None,
         "created_at": None,
     }
+
+
+def _recommend_score(b: Benchmark, topic: str) -> int:
+    if not topic:
+        return 0
+    haystack = " ".join(filter(None, [b.title, b.platform, b.source_url, b.classification_reason])).lower()
+    score = 0
+    for token in topic.replace("，", " ").replace(",", " ").split():
+        if token and token in haystack:
+            score += 3
+    if topic and topic in haystack:
+        score += 8
+    return score

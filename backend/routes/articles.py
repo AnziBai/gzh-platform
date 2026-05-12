@@ -43,7 +43,6 @@ def list_articles():
             }
             result.append(item)
 
-        # DB records whose files no longer exist on disk
         for file_path, db_record in db_by_path.items():
             if file_path not in seen_paths:
                 item = {
@@ -124,7 +123,7 @@ def hot_reference_articles():
 
 @articles_bp.route("/articles/generate", methods=["POST"])
 def generate_article():
-    """触发 Claude Code 子进程生成文章，返回 task_id。"""
+    """Start an article generation task and return task_id."""
     from services.task_manager import task_manager
     from services.generate_service import run_generate
 
@@ -135,16 +134,33 @@ def generate_article():
 
     benchmark_slug = body.get("benchmark_slug")
     reference_article_slug = body.get("reference_article_slug")
+    material_ids = body.get("material_ids") or []
+    context_hint = _build_material_context(material_ids)
 
     task_id = task_manager.create_task("generate", meta={"topic": topic})
-    task_manager.run(task_id, run_generate, topic, benchmark_slug, reference_article_slug)
+    task_manager.run(task_id, run_generate, topic, benchmark_slug, reference_article_slug, context_hint)
 
+    return success_response({"task_id": task_id})
+
+
+@articles_bp.route("/articles/<path:slug>/rewrite-for-publish", methods=["POST"])
+def rewrite_article_for_publish(slug):
+    from services.rewrite_service import run_rewrite_for_publish
+    from services.task_manager import task_manager
+
+    body = request.get_json(silent=True) or {}
+    reference_benchmark_id = body.get("reference_benchmark_id")
+    task_id = task_manager.create_task(
+        "rewrite_publish",
+        meta={"slug": slug, "reference_benchmark_id": reference_benchmark_id},
+    )
+    task_manager.run(task_id, run_rewrite_for_publish, slug, reference_benchmark_id)
     return success_response({"task_id": task_id})
 
 
 @articles_bp.route("/articles/<path:slug>/publish", methods=["POST"])
 def publish_article(slug):
-    """触发 wenyan-mcp 发布文章，返回 task_id。"""
+    """Start a publish task and return task_id."""
     from config import Config
     from services.task_manager import task_manager
     from services.publish_service import run_publish
@@ -172,6 +188,34 @@ def publish_article(slug):
     return success_response({"task_id": task_id})
 
 
+def _build_material_context(material_ids) -> str:
+    if not isinstance(material_ids, list) or not material_ids:
+        return ""
+    ids = [int(item) for item in material_ids if str(item).isdigit()]
+    if not ids:
+        return ""
+    from services.article_service import parse_frontmatter
+    from models import Benchmark
+
+    db = SessionLocal()
+    try:
+        records = db.query(Benchmark).filter(Benchmark.id.in_(ids)).all()
+        parts = []
+        for bm in records:
+            if not bm.file_path or not os.path.exists(bm.file_path):
+                continue
+            parsed = parse_frontmatter(bm.file_path)
+            content = (parsed.get("content") or "").strip()
+            if content:
+                source = bm.source_url or bm.platform or "local"
+                parts.append(f"### {bm.title}\nSource: {source}\n\n{content[:3000]}")
+        if not parts:
+            return ""
+        return "\n\n## Fact materials for citation\n\n" + "\n\n".join(parts)
+    finally:
+        db.close()
+
+
 @articles_bp.route("/articles/<int:article_id>", methods=["DELETE"])
 def delete_article(article_id):
     db = SessionLocal()
@@ -180,7 +224,6 @@ def delete_article(article_id):
         if not article:
             return error_response("Article not found", 404)
 
-        # Don't allow deleting published articles with media_id
         if article.media_id:
             return error_response("已发布的文章不能删除", 400)
 

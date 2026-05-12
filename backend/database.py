@@ -14,7 +14,7 @@ class Base(DeclarativeBase):
 
 
 def init_db():
-    from models import Article, ArticleStat, Benchmark, Topic, Task, SyncStatus  # noqa: F401
+    from models import Article, ArticleStat, Benchmark, MaterialCandidate, Topic, Task, SyncStatus  # noqa: F401
     os.makedirs(os.path.dirname(Config.DB_PATH), exist_ok=True)
     Base.metadata.create_all(bind=engine)
     _ensure_article_stats_columns()
@@ -43,6 +43,10 @@ def _ensure_benchmark_columns():
         "benchmarks",
         {
             "material_type": "VARCHAR DEFAULT 'reference_article' NOT NULL",
+            "source_kind": "VARCHAR",
+            "source_hash": "VARCHAR",
+            "classification_reason": "TEXT",
+            "approved_from_candidate_id": "INTEGER",
         },
     )
 

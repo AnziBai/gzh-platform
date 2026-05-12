@@ -4,8 +4,10 @@ import { Button, Input, Select, Tag, Spin, Alert, Empty, Typography, Progress, P
 import { PlusOutlined, ThunderboltOutlined, DeleteOutlined } from '@ant-design/icons'
 import Markdown from 'react-markdown'
 import { getArticles, getArticleBySlug, generateArticle, deleteArticle, getHotReferenceArticles } from '../api/articles'
+import { recommendBenchmarks } from '../api/benchmarks'
 import { useTaskStream } from '../hooks/useTaskStream'
 import type { Article } from '../api/articles'
+import type { Benchmark } from '../api/benchmarks'
 
 const { Title, Text } = Typography
 
@@ -20,6 +22,10 @@ export default function WorkshopPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
   const [referenceSlug, setReferenceSlug] = useState<string | undefined>()
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>([])
+  const [referenceBenchmarkId, setReferenceBenchmarkId] = useState<number | undefined>()
+  const [recommendedFacts, setRecommendedFacts] = useState<Benchmark[]>([])
+  const [recommendedReferences, setRecommendedReferences] = useState<Benchmark[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -67,12 +73,35 @@ export default function WorkshopPage() {
     setGenerating(true)
     setTaskId(null)
     try {
-      const { task_id } = await generateArticle(topic.trim(), undefined, referenceSlug)
+      const referenceBenchmark = recommendedReferences.find((item) => item.id === referenceBenchmarkId)
+      const { task_id } = await generateArticle(
+        topic.trim(),
+        referenceBenchmark?.file_path ? referenceBenchmark.file_path.split('/').pop()?.replace(/\.md$/, '') : undefined,
+        referenceSlug,
+        selectedMaterialIds,
+      )
       setTaskId(task_id)
       scrollLogs()
     } catch {
       setGenerating(false)
       messageApi.error('启动生成任务失败')
+    }
+  }
+
+  const handleRecommend = async () => {
+    if (!topic.trim()) {
+      messageApi.warning('请先输入文章主题')
+      return
+    }
+    try {
+      const result = await recommendBenchmarks(topic.trim())
+      setRecommendedFacts(result.fact_materials)
+      setRecommendedReferences(result.reference_articles)
+      setSelectedMaterialIds(result.fact_materials.filter((item) => item.id != null).slice(0, 3).map((item) => item.id as number))
+      setReferenceBenchmarkId(result.reference_articles.find((item) => item.id != null)?.id ?? undefined)
+      messageApi.success('已推荐可用素材')
+    } catch (err) {
+      messageApi.error(`推荐失败：${(err as Error).message}`)
     }
   }
 
@@ -148,6 +177,39 @@ export default function WorkshopPage() {
               options={(hotReferences ?? []).map((article) => ({
                 value: article.slug,
                 label: `${article.title}（${article.read_count}阅读）`,
+              }))}
+            />
+            <Button
+              block
+              onClick={handleRecommend}
+              disabled={generating}
+              style={{ marginBottom: 8 }}
+            >
+              推荐素材
+            </Button>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="事实资料/案例/数据"
+              value={selectedMaterialIds}
+              onChange={setSelectedMaterialIds}
+              disabled={generating}
+              style={{ width: '100%', marginBottom: 8 }}
+              options={recommendedFacts.filter((item) => item.id != null).map((item) => ({
+                value: item.id as number,
+                label: item.title,
+              }))}
+            />
+            <Select
+              allowClear
+              placeholder="素材库爆款参考"
+              value={referenceBenchmarkId}
+              onChange={setReferenceBenchmarkId}
+              disabled={generating}
+              style={{ width: '100%', marginBottom: 8 }}
+              options={recommendedReferences.filter((item) => item.id != null).map((item) => ({
+                value: item.id as number,
+                label: item.title,
               }))}
             />
             <Button

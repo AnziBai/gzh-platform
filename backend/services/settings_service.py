@@ -8,7 +8,13 @@ ALLOWED_ENV_KEYS = {
     "AI_BASE_URL",
     "AI_API_KEY",
     "AI_MODEL",
+    "AI_PRESET_PROVIDER",
+    "AI_EXTRA_BODY_JSON",
     "CLAUDE_BIN",
+    "SEARCH_PROVIDER",
+    "SEARCH_API_KEY",
+    "SEARCH_BASE_URL",
+    "HOT_SOURCE_PRESETS_JSON",
     "GZHPUBLISHER_ROOT",
     "ARTICLES_DIR",
     "BENCHMARKS_DIR",
@@ -27,7 +33,14 @@ def settings_payload(config) -> dict:
             "base_url": config.AI_BASE_URL or "",
             "api_key_configured": bool(config.AI_API_KEY),
             "model": config.AI_MODEL or "",
+            "preset_provider": config.AI_PRESET_PROVIDER or "",
+            "extra_body_json": config.AI_EXTRA_BODY_JSON or "",
             "claude_bin": config.CLAUDE_BIN or "",
+        },
+        "search": {
+            "provider": config.SEARCH_PROVIDER or "",
+            "base_url": config.SEARCH_BASE_URL or "",
+            "api_key_configured": bool(config.SEARCH_API_KEY),
         },
         "directories": {
             "gzhpublisher_root": config.GZHPUBLISHER_ROOT or "",
@@ -49,7 +62,13 @@ def flatten_settings(body: dict) -> dict[str, str]:
         "AI_BASE_URL": ai_writer.get("base_url"),
         "AI_API_KEY": ai_writer.get("api_key"),
         "AI_MODEL": ai_writer.get("model"),
+        "AI_PRESET_PROVIDER": ai_writer.get("preset_provider"),
+        "AI_EXTRA_BODY_JSON": ai_writer.get("extra_body_json"),
         "CLAUDE_BIN": ai_writer.get("claude_bin"),
+        "SEARCH_PROVIDER": (body.get("search") or {}).get("provider"),
+        "SEARCH_API_KEY": (body.get("search") or {}).get("api_key"),
+        "SEARCH_BASE_URL": (body.get("search") or {}).get("base_url"),
+        "HOT_SOURCE_PRESETS_JSON": body.get("hot_source_presets_json"),
     }
     return {
         key: str(value).strip()

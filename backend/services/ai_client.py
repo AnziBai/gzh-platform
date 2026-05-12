@@ -125,6 +125,7 @@ class OpenAICompatibleClient:
         self.base_url = (getattr(config, "AI_BASE_URL", "") or "").strip().rstrip("/")
         self.api_key = (getattr(config, "AI_API_KEY", "") or "").strip()
         self.model = (getattr(config, "AI_MODEL", "") or "").strip()
+        self.extra_body = _parse_extra_body(getattr(config, "AI_EXTRA_BODY_JSON", "") or "")
 
     def label(self) -> str:
         return f"OpenAI-compatible API ({self.model or 'model not configured'})"
@@ -152,7 +153,7 @@ class OpenAICompatibleClient:
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.7,
-                },
+                } | self.extra_body,
                 timeout=120,
             )
         except requests.RequestException as exc:
@@ -184,6 +185,19 @@ def get_ai_client(config):
     if provider == "openai_compatible":
         return OpenAICompatibleClient(config)
     raise AIClientError(f"不支持的 AI Provider: {provider}")
+
+
+def _parse_extra_body(raw: str) -> dict:
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AIClientError(f"AI_EXTRA_BODY_JSON 不是合法 JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise AIClientError("AI_EXTRA_BODY_JSON 必须是 JSON object")
+    return parsed
 
 
 def test_ai_connection(config) -> dict:

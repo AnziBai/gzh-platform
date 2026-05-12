@@ -5,6 +5,13 @@ from utils import success_response, error_response
 settings_bp = Blueprint("settings", __name__)
 
 
+@settings_bp.route("/settings/model-presets")
+def get_model_presets():
+    from services.model_preset_service import model_presets
+
+    return success_response(model_presets())
+
+
 @settings_bp.route("/settings")
 def get_settings():
     from config import Config
